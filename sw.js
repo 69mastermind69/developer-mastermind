@@ -1,158 +1,88 @@
 
-/* =========================================
-   DEVELOPER MASTERMIND
-   File: sw.js
-   Service Worker for GitHub Pages
-========================================= */
+const CACHE_NAME = "developer-mastermind-v1";
 
-"use strict";
-
-const CACHE_VERSION = "developer-mastermind-v2";
-const APP_SHELL_CACHE = `${CACHE_VERSION}-shell`;
-const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
-
-const APP_SHELL = [
+const APP_FILES = [
   "./",
   "./index.html",
   "./style.css",
-  "./app.js"
+  "./app.js",
+  "./manifest.json"
 ];
 
-self.addEventListener("install", event => {
+self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(APP_SHELL_CACHE)
-      .then(async cache => {
-        await Promise.all(
-          APP_SHELL.map(async path => {
-            try {
-              const response = await fetch(path, { cache: "reload" });
-
-              if (response.ok) {
-                await cache.put(path, response);
-              }
-            } catch (error) {
-              console.warn("Could not cache:", path, error);
-            }
-          })
-        );
-      })
+    caches.open(CACHE_NAME)
+      .then((cache) => cache.addAll(APP_FILES))
       .then(() => self.skipWaiting())
   );
 });
 
-self.addEventListener("activate", event => {
+self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys()
-      .then(cacheNames => Promise.all(
-        cacheNames.map(cacheName => {
-          const belongsToApp =
-            cacheName.startsWith("developer-mastermind-");
-
-          const isCurrent =
-            cacheName === APP_SHELL_CACHE ||
-            cacheName === RUNTIME_CACHE;
-
-          if (belongsToApp && !isCurrent) {
-            return caches.delete(cacheName);
-          }
-
-          return Promise.resolve(false);
-        })
-      ))
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((key) =>
+              key.startsWith("developer-mastermind-") &&
+              key !== CACHE_NAME
+            )
+            .map((key) => caches.delete(key))
+        )
+      )
       .then(() => self.clients.claim())
   );
 });
 
-self.addEventListener("fetch", event => {
+self.addEventListener("fetch", (event) => {
   const request = event.request;
-
-  if (request.method !== "GET") return;
-
   const url = new URL(request.url);
 
-  // Only handle requests from this app's origin.
-  if (url.origin !== self.location.origin) return;
-
-  // HTML navigation: network first, cached page when offline.
-  if (request.mode === "navigate") {
-    event.respondWith(
-      fetch(request)
-        .then(response => {
-          if (response.ok) {
-            const copy = response.clone();
-
-            caches.open(APP_SHELL_CACHE)
-              .then(cache => cache.put("./index.html", copy))
-              .catch(error => console.warn("Page cache failed:", error));
-          }
-
-          return response;
-        })
-        .catch(async () => {
-          const cachedPage = await caches.match(request);
-
-          if (cachedPage) return cachedPage;
-
-          const cachedIndex = await caches.match("./index.html");
-
-          if (cachedIndex) return cachedIndex;
-
-          return new Response(
-            `<!doctype html>
-            <html lang="en">
-              <head>
-                <meta charset="utf-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1">
-                <title>Developer Mastermind</title>
-              </head>
-              <body>
-                <h1>You are offline</h1>
-                <p>Reconnect to the internet and try again.</p>
-              </body>
-            </html>`,
-            {
-              status: 503,
-              headers: {
-                "Content-Type": "text/html; charset=utf-8"
-              }
-            }
-          );
-        })
-    );
-
+  // Only handle this app's own files and pages.
+  if (
+    request.method !== "GET" ||
+    url.origin !== self.location.origin
+  ) {
     return;
   }
 
-  const isAppResource =
-    /\.(?:js|css|json|png|svg|webp|jpe?g|woff2|ico)$/i.test(url.pathname);
-
-  if (!isAppResource) return;
-
-  // App resources: cache first, then network.
-  event.respondWith(
-    caches.match(request)
-      .then(cachedResponse => {
-        if (cachedResponse) return cachedResponse;
-
-        return fetch(request).then(response => {
-          if (!response || !response.ok || response.type === "opaque") {
-            return response;
+  // For page navigation: try network, then cached app page.
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME)
+              .then((cache) => cache.put("./index.html", copy));
           }
-
-          const copy = response.clone();
-
-          caches.open(RUNTIME_CACHE)
-            .then(cache => cache.put(request, copy))
-            .catch(error => console.warn("Resource cache failed:", error));
-
           return response;
-        });
-      })
-  );
-});
-
-self.addEventListener("message", event => {
-  if (event.data === "SKIP_WAITING") {
-    self.skipWaiting();
+        })
+        .catch(async () => {
+          return (
+            await caches.match(request) ||
+            await caches.match("./index.html") ||
+            Response.error()
+          );
+        })
+    );
+    return;
   }
+
+  // For app assets: use cache first, then network.
+  event.respondWith(
+    caches.match(request).then(async (cached) => {
+      if (cached) return cached;
+
+      const response = await fetch(request);
+
+      if (response.ok) {
+        const copy = response.clone();
+        caches.open(CACHE_NAME)
+          .then((cache) => cache.put(request, copy));
+      }
+
+      return response;
+    })
+  );
 });
