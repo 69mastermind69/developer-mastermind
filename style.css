@@ -1313,3 +1313,358 @@ a {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ================= STUDY PLANNER ================= */
+
+.planner-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin: 22px 0;
+}
+
+.planner-stat,
+.planner-panel,
+.planner-list-panel {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 17px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.planner-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px;
+}
+
+.planner-stat span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.planner-stat strong {
+  font-size: 27px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.planner-panel,
+.planner-list-panel {
+  padding: 23px;
+  margin-bottom: 22px;
+}
+
+.planner-panel h2,
+.planner-list-heading h2 {
+  margin: 0 0 17px;
+  font-size: 18px;
+  letter-spacing: -0.4px;
+}
+
+#plannerForm {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.planner-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.planner-field input,
+.planner-field select,
+.planner-field textarea,
+.planner-search-label input {
+  width: 100%;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  outline: none;
+  background: var(--surface-soft);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.planner-field input,
+.planner-field select {
+  min-height: 43px;
+}
+
+.planner-field textarea {
+  resize: vertical;
+  line-height: 1.7;
+}
+
+.planner-field input:focus,
+.planner-field select:focus,
+.planner-field textarea:focus,
+.planner-search-label input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+.planner-full {
+  grid-column: 1 / -1;
+}
+
+.planner-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.planner-help,
+.planner-task-reminder {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.8;
+}
+
+.planner-list-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.planner-list-heading h2 {
+  margin-bottom: 3px;
+}
+
+.planner-list-heading .section-subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.planner-search-label {
+  width: min(100%, 260px);
+}
+
+.planner-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 20px 0;
+}
+
+.planner-filters button,
+.planner-task-actions button {
+  min-height: 35px;
+  padding: 7px 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.planner-filters button.active,
+.planner-filters button:hover,
+.planner-task-actions button:hover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.planner-task-list {
+  display: grid;
+  gap: 12px;
+}
+
+.planner-task {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface);
+}
+
+.planner-task-check {
+  display: flex;
+  padding-top: 4px;
+}
+
+.planner-task-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.planner-task-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.planner-task-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.planner-task-top h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.is-completed .planner-task-top h3 {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.planner-priority {
+  flex-shrink: 0;
+  padding: 4px 7px;
+  border-radius: 6px;
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.priority-high {
+  color: var(--danger);
+  background: var(--surface-soft);
+}
+
+.priority-medium {
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.priority-low {
+  color: var(--success);
+  background: var(--surface-soft);
+}
+
+.planner-task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 13px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.planner-overdue {
+  color: var(--danger);
+  font-weight: 800;
+}
+
+.planner-task-details {
+  margin: 10px 0 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.planner-task-reminder {
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+}
+
+.planner-task-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.planner-empty {
+  padding: 35px 15px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 13px;
+}
+
+.planner-empty h3 {
+  margin: 0 0 5px;
+  font-size: 15px;
+}
+
+.planner-empty p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 850px) {
+  .planner-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .planner-panel,
+  .planner-list-panel {
+    padding: 15px;
+  }
+
+  #plannerForm {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .planner-full {
+    grid-column: auto;
+  }
+
+  .planner-stat {
+    padding: 13px;
+  }
+
+  .planner-stat strong {
+    font-size: 23px;
+  }
+
+  .planner-task {
+    gap: 9px;
+    padding: 12px;
+  }
+
+  .planner-task-top {
+    flex-wrap: wrap;
+  }
+
+  .planner-list-heading,
+  .planner-search-label {
+    width: 100%;
+  }
+
+  .planner-form-actions > button {
+    flex: 1 1 auto;
+  }
+}
