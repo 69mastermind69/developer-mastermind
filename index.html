@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#6558e8">
+  <meta name="description" content="Developer MASTERMIND — your private offline study workspace.">
+  <title>Developer MASTERMIND</title>
+
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="./" aria-label="Developer MASTERMIND home">
+        <span class="brand-icon">M</span>
+        <span class="brand-copy">
+          <strong>Developer</strong>
+          <span>MASTERMIND</span>
+        </span>
+      </a>
+
+      <div class="sidebar-label">WORKSPACE</div>
+
+      <nav class="navigation" aria-label="Main navigation">
+        <button class="nav-item active" data-view="home">
+          <span>⌂</span> Dashboard
+        </button>
+        <button class="nav-item" data-view="notes">
+          <span>▤</span> My Notes
+        </button>
+        <button class="nav-item" data-view="planner">
+          <span>◷</span> Study Planner
+          <span class="soon-tag">Soon</span>
+        </button>
+        <button class="nav-item" data-view="focus">
+          <span>◉</span> Focus Timer
+          <span class="soon-tag">Soon</span>
+        </button>
+        <button class="nav-item" data-view="library">
+          <span>▧</span> Photo & PDF
+          <span class="soon-tag">Soon</span>
+        </button>
+        <button class="nav-item" data-view="flashcards">
+          <span>▱</span> Flashcards
+          <span class="soon-tag">Soon</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <div class="privacy-card">
+          <span class="privacy-icon">◈</span>
+          <strong>Your data stays local</strong>
+          <p>Notes are stored on this device, not in a cloud account.</p>
+        </div>
+        <div class="sidebar-footer">MADE FOR FOCUSED LEARNING</div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <button class="icon-button mobile-menu" id="menuButton"
+          aria-label="Open navigation">☰</button>
+
+        <div class="breadcrumb">
+          <span>Workspace</span>
+          <span class="breadcrumb-separator">/</span>
+          <strong id="breadcrumbCurrent">Dashboard</strong>
+        </div>
+
+        <div class="topbar-actions">
+          <span class="offline-indicator">
+            <span class="status-dot"></span>
+            <span id="connectionText">Local workspace</span>
+          </span>
+
+          <button class="icon-button" id="themeButton"
+            aria-label="Change theme" title="Change theme">◐</button>
+
+          <button class="avatar" id="installButton"
+            title="Install app" aria-label="Install app">DM</button>
+        </div>
+      </header>
+
+      <section class="page" id="dashboardView">
+        <div class="welcome-row">
+          <div>
+            <div class="eyebrow">YOUR PERSONAL STUDY SPACE</div>
+            <h1>Make today <span class="gradient-text">count.</span></h1>
+            <p class="subtitle">Your ideas, notes and study goals — all in one place.</p>
+          </div>
+          <button class="primary-button" id="newNoteButton">
+            <span>＋</span> New note
+          </button>
+        </div>
+
+        <div class="hero-card">
+          <div class="hero-content">
+            <div class="hero-pill"><span></span> YOUR WORKSPACE, YOUR RULES</div>
+            <h2>Think clearly.<br>Study smarter.</h2>
+            <p>Capture what you learn. Build a revision habit. Keep your knowledge close, even offline.</p>
+            <button class="hero-button" id="heroNoteButton">
+              Create your first note <span>→</span>
+            </button>
+          </div>
+          <div class="hero-art" aria-hidden="true">
+            <div class="art-orbit orbit-one"></div>
+            <div class="art-orbit orbit-two"></div>
+            <div class="art-card art-card-back"></div>
+            <div class="art-card art-card-front">
+              <div class="art-card-top"><span></span><span></span><span></span></div>
+              <div class="art-line line-long"></div>
+              <div class="art-line line-medium"></div>
+              <div class="art-highlight"></div>
+              <div class="art-line line-short"></div>
+            </div>
+            <div class="art-sparkle">✦</div>
+          </div>
+        </div>
+
+        <div class="section-heading">
+          <div>
+            <h2>Your overview</h2>
+            <p class="section-subtitle">A little progress adds up.</p>
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <article class="stat-card">
+            <div class="stat-top">
+              <span class="stat-icon purple">▤</span>
+              <span class="stat-label">TOTAL NOTES</span>
+            </div>
+            <div class="stat-number" id="totalNotes">0</div>
+            <div class="stat-foot">Saved on this device</div>
+          </article>
+
+          <article class="stat-card">
+            <div class="stat-top">
+              <span class="stat-icon blue">⌕</span>
+              <span class="stat-label">SEARCH READY</span>
+            </div>
+            <div class="stat-number">100%</div>
+            <div class="stat-foot">Search titles and content</div>
+          </article>
+
+          <article class="stat-card">
+            <div class="stat-top">
+              <span class="stat-icon green">◈</span>
+              <span class="stat-label">PRIVACY</span>
+            </div>
+            <div class="stat-number">Local</div>
+            <div class="stat-foot">No account required</div>
+          </article>
+
+          <article class="stat-card">
+            <div class="stat-top">
+              <span class="stat-icon orange">◷</span>
+              <span class="stat-label">CONNECTION</span>
+            </div>
+            <div class="stat-number" id="offlineStatus">Ready</div>
+            <div class="stat-foot">Offline support enabled</div>
+          </article>
+        </div>
+
+        <div class="notes-section">
+          <div class="section-heading notes-heading">
+            <div>
+              <h2>Recent notes</h2>
+              <p class="section-subtitle">Your latest ideas, ready when you are.</p>
+            </div>
+            <button class="text-button" id="viewAllNotes">View all →</button>
+          </div>
+
+          <div class="search-wrap">
+            <span class="search-icon">⌕</span>
+            <input id="searchInput" type="search"
+              placeholder="Search notes in বাংলা or English..."
+              autocomplete="off" aria-label="Search notes">
+            <kbd>SEARCH</kbd>
+          </div>
+
+          <div class="notes-grid" id="notesGrid" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section class="page hidden" id="notesView">
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow">YOUR KNOWLEDGE LIBRARY</div>
+            <h1>My <span class="gradient-text">Notes.</span></h1>
+            <p class="subtitle">Write it down. Find it when you need it.</p>
+          </div>
+          <button class="primary-button" id="notesNewButton">＋ New note</button>
+        </div>
+        <div class="search-wrap notes-page-search">
+          <span class="search-icon">⌕</span>
+          <input id="notesSearchInput" type="search"
+            placeholder="Search by title or note content..."
+            aria-label="Search all notes">
+        </div>
+        <div class="notes-grid" id="allNotesGrid" aria-live="polite"></div>
+      </section>
+
+      <section class="page hidden" id="editorView">
+        <div class="editor-heading">
+          <button class="text-button" id="backToNotes">← Back to notes</button>
+          <span class="save-indicator" id="saveStatus">Not saved yet</span>
+        </div>
+
+        <div class="editor-panel">
+          <label class="field-label" for="noteTitle">NOTE TITLE</label>
+          <input id="noteTitle" class="title-input" maxlength="180"
+            placeholder="Give your note a title..." autocomplete="off">
+
+          <div class="editor-meta">
+            <span>✦ Personal workspace</span>
+            <span id="editorDate">New note</span>
+          </div>
+
+          <div class="editor-divider"></div>
+
+          <label class="field-label" for="noteContent">YOUR NOTE</label>
+          <textarea id="noteContent" class="content-input"
+            placeholder="Start writing here... বাংলা বা English, দুটোই লিখতে পারো।"
+            spellcheck="true"></textarea>
+
+          <div class="editor-footer">
+            <span>Changes are saved to this device.</span>
+            <div class="editor-actions">
+              <button class="secondary-button" id="deleteNoteButton">Move to trash</button>
+              <button class="primary-button" id="saveNoteButton">Save note</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page hidden" id="placeholderView">
+        <div class="placeholder-card">
+          <div class="placeholder-icon" id="placeholderIcon">✦</div>
+          <div class="eyebrow">COMING IN A FUTURE MODULE</div>
+          <h1 id="placeholderTitle">Study Planner</h1>
+          <p id="placeholderDescription">
+            This section will be added in a later implementation phase.
+          </p>
+          <button class="primary-button" id="placeholderNotesButton">
+            Go to My Notes →
+          </button>
+        </div>
+      </section>
+
+      <footer class="page-footer">
+        <span>Developer MASTERMIND</span>
+        <span>Private by design · Built for learning</span>
+      </footer>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>
