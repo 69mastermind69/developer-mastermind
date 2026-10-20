@@ -19,7 +19,6 @@ let autosaveTimer = null;
 let currentFilter = "all";
 let currentFolder = "";
 let editorControlsReady = false;
-let isSaving = false;
 let saveQueue = Promise.resolve();
 
 const $ = (selector) => document.querySelector(selector);
@@ -47,38 +46,33 @@ const placeholderPages = {
   planner: {
     title: "Study Planner",
     icon: "◷",
-    description:
-      "Plan study sessions, organise deadlines and manage reminders."
+    description: "Plan study sessions, organise deadlines and manage reminders."
   },
   focus: {
     title: "Focus Timer",
     icon: "◉",
-    description:
-      "A Pomodoro timer and study history are planned for a future update."
+    description: "A Pomodoro timer and study history are planned for a future update."
   },
   library: {
     title: "Photo & PDF Library",
     icon: "▧",
-    description:
-      "Photo storage, PDF tools and OCR are planned for a future update."
+    description: "Photo storage, PDF tools and OCR are planned for a future update."
   },
   flashcards: {
     title: "Flashcards & Revision",
     icon: "▱",
-    description:
-      "Create revision cards and track learning progress in a future update."
+    description: "Create revision cards and track learning progress in a future update."
   }
 };
 
 /* -------------------- Utilities -------------------- */
 
 function makeId() {
-  if (window.crypto?.randomUUID) {
+  if (window.crypto && typeof window.crypto.randomUUID === "function") {
     return window.crypto.randomUUID();
   }
 
-  return Date.now().toString(36) +
-    Math.random().toString(36).slice(2);
+  return Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
 
 function escapeHTML(value) {
@@ -96,9 +90,7 @@ function formatDate(value) {
 
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) {
-    return "Recently";
-  }
+  if (Number.isNaN(date.getTime())) return "Recently";
 
   return new Intl.DateTimeFormat(undefined, {
     month: "short",
@@ -108,16 +100,18 @@ function formatDate(value) {
 }
 
 function showToast(message) {
-  if (!elements.toast) return;
+  if (!elements.toast) {
+    console.log(message);
+    return;
+  }
 
   elements.toast.textContent = message;
   elements.toast.classList.add("show");
 
   clearTimeout(toastTimer);
-
   toastTimer = setTimeout(() => {
     elements.toast.classList.remove("show");
-  }, 2800);
+  }, 3000);
 }
 
 function setSaveStatus(message, saved = false) {
@@ -128,14 +122,16 @@ function setSaveStatus(message, saved = false) {
 }
 
 function normaliseNote(note) {
-  // Add new properties without removing old note content.
   return {
     ...note,
-    title: note.title || "Untitled note",
-    content: note.content || "",
+    id: String(note.id),
+    title: typeof note.title === "string" && note.title.trim()
+      ? note.title
+      : "Untitled note",
+    content: typeof note.content === "string" ? note.content : "",
     folder: typeof note.folder === "string" ? note.folder : "",
     tags: Array.isArray(note.tags)
-      ? [...new Set(note.tags.map(String).filter(Boolean))]
+      ? [...new Set(note.tags.map(String).map((tag) => tag.trim()).filter(Boolean))]
       : [],
     favorite: note.favorite === true,
     deletedAt: note.deletedAt || null,
@@ -149,7 +145,7 @@ function normaliseNote(note) {
 function openDatabase() {
   return new Promise((resolve, reject) => {
     if (!("indexedDB" in window)) {
-      reject(new Error("IndexedDB is not supported."));
+      reject(new Error("IndexedDB is not supported in this browser."));
       return;
     }
 
@@ -158,8 +154,7 @@ function openDatabase() {
     request.onupgradeneeded = (event) => {
       const database = event.target.result;
 
-      // Keep the existing object store and all existing notes.
-      // Never delete or recreate the notes store during an upgrade.
+      // Preserve the existing notes store and all stored data.
       if (!database.objectStoreNames.contains(STORE_NAME)) {
         const store = database.createObjectStore(STORE_NAME, {
           keyPath: "id"
@@ -173,30 +168,35 @@ function openDatabase() {
 
     request.onsuccess = () => {
       db = request.result;
-
       db.onversionchange = () => db.close();
-
       resolve(db);
     };
 
     request.onerror = () => reject(request.error);
+
     request.onblocked = () => {
       console.warn("Database upgrade is blocked by another open tab.");
+      showToast("Close other app tabs, then reload this page.");
     };
   });
 }
 
 function getStore(mode = "readonly") {
-  if (!db) {
-    throw new Error("The local database is not ready.");
-  }
+  if (!db) throw new Error("The local database is not ready.");
 
   return db.transaction(STORE_NAME, mode).objectStore(STORE_NAME);
 }
 
 function getAllNotes() {
   return new Promise((resolve, reject) => {
-    const request = getStore().getAll();
+    let request;
+
+    try {
+      request = getStore("readonly").getAll();
+    } catch (error) {
+      reject(error);
+      return;
+    }
 
     request.onsuccess = () => {
       resolve((request.result || []).map(normaliseNote));
@@ -208,7 +208,14 @@ function getAllNotes() {
 
 function getNote(id) {
   return new Promise((resolve, reject) => {
-    const request = getStore().get(id);
+    let request;
+
+    try {
+      request = getStore("readonly").get(String(id));
+    } catch (error) {
+      reject(error);
+      return;
+    }
 
     request.onsuccess = () => {
       resolve(request.result ? normaliseNote(request.result) : null);
@@ -220,9 +227,15 @@ function getNote(id) {
 
 function putNote(note) {
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readwrite");
+    let transaction;
 
-    transaction.objectStore(STORE_NAME).put(normaliseNote(note));
+    try {
+      transaction = db.transaction(STORE_NAME, "readwrite");
+      transaction.objectStore(STORE_NAME).put(normaliseNote(note));
+    } catch (error) {
+      reject(error);
+      return;
+    }
 
     transaction.oncomplete = () => resolve(note);
     transaction.onerror = () => reject(transaction.error);
@@ -232,9 +245,15 @@ function putNote(note) {
 
 function deleteNoteFromDatabase(id) {
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readwrite");
+    let transaction;
 
-    transaction.objectStore(STORE_NAME).delete(id);
+    try {
+      transaction = db.transaction(STORE_NAME, "readwrite");
+      transaction.objectStore(STORE_NAME).delete(String(id));
+    } catch (error) {
+      reject(error);
+      return;
+    }
 
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error);
@@ -278,15 +297,11 @@ function noteMatchesSearch(note, term) {
 
 function getVisibleNotes(notes, term = "") {
   let result = notes.filter((note) => {
-    if (currentFilter === "trash") {
-      return Boolean(note.deletedAt);
-    }
+    if (currentFilter === "trash") return Boolean(note.deletedAt);
 
     if (note.deletedAt) return false;
 
-    if (currentFilter === "favorites" && !note.favorite) {
-      return false;
-    }
+    if (currentFilter === "favorites" && !note.favorite) return false;
 
     if (currentFilter === "folder" && note.folder !== currentFolder) {
       return false;
@@ -304,7 +319,6 @@ function getVisibleNotes(notes, term = "") {
   return result.sort((a, b) => {
     const dateA = new Date(a.updatedAt).getTime() || 0;
     const dateB = new Date(b.updatedAt).getTime() || 0;
-
     return dateB - dateA;
   });
 }
@@ -316,6 +330,7 @@ function noteCardHTML(note) {
   const content = escapeHTML(note.content || "No content yet.");
   const date = escapeHTML(formatDate(note.updatedAt));
   const folder = escapeHTML(note.folder || "Unfiled");
+
   const tags = (note.tags || [])
     .map((tag) => `<span class="dm-tag">${escapeHTML(tag)}</span>`)
     .join("");
@@ -325,23 +340,21 @@ function noteCardHTML(note) {
     (String(note.id).charCodeAt(0) || 0) % colors.length
   ];
 
-  const trashActions = note.deletedAt
+  const actions = note.deletedAt
     ? `
       <div class="dm-card-actions">
         <button type="button" data-note-action="restore"
           data-note-id="${escapeHTML(note.id)}">Restore</button>
         <button type="button" data-note-action="purge"
           data-note-id="${escapeHTML(note.id)}">Delete forever</button>
-      </div>
-    `
+      </div>`
     : "";
 
   return `
     <article class="note-card"
       style="--note-accent:${color}"
       data-note-id="${escapeHTML(note.id)}"
-      tabindex="0"
-      role="button"
+      tabindex="0" role="button"
       aria-label="Open note: ${title}">
 
       <div class="note-card-top">
@@ -353,18 +366,15 @@ function noteCardHTML(note) {
 
       <div class="note-title">${title}</div>
       <div class="note-preview">${content}</div>
-
       <div class="dm-folder-label">📁 ${folder}</div>
       ${tags ? `<div class="dm-tags">${tags}</div>` : ""}
 
       <div class="note-card-bottom">
         <span>${note.deletedAt ? "In trash" : "Stored locally"}</span>
-        <span class="note-open">
-          ${note.deletedAt ? "Manage →" : "Open →"}
-        </span>
+        <span class="note-open">${note.deletedAt ? "Manage →" : "Open →"}</span>
       </div>
 
-      ${trashActions}
+      ${actions}
     </article>
   `;
 }
@@ -376,8 +386,16 @@ function emptyStateHTML(hasSearch = false) {
         <div class="empty-state-icon">♲</div>
         <h3>Your trash is empty</h3>
         <p>Deleted notes will appear here so you can restore them.</p>
-      </div>
-    `;
+      </div>`;
+  }
+
+  if (currentFilter === "favorites") {
+    return `
+      <div class="empty-state">
+        <div class="empty-state-icon">★</div>
+        <h3>No favorite notes yet</h3>
+        <p>Open a note and add it to favorites.</p>
+      </div>`;
   }
 
   if (hasSearch) {
@@ -386,8 +404,7 @@ function emptyStateHTML(hasSearch = false) {
         <div class="empty-state-icon">⌕</div>
         <h3>No matching notes</h3>
         <p>Try another keyword in বাংলা or English.</p>
-      </div>
-    `;
+      </div>`;
   }
 
   return `
@@ -395,14 +412,13 @@ function emptyStateHTML(hasSearch = false) {
       <div class="empty-state-icon">✦</div>
       <h3>Your first idea starts here</h3>
       <p>Create a note to save what you learn. Notes stay on this device.</p>
-      <button class="primary-button" data-action="new-note">
+      <button type="button" class="primary-button" data-action="new-note">
         ＋ Create a note
       </button>
-    </div>
-  `;
+    </div>`;
 }
 
-/* -------------------- Dynamic interface -------------------- */
+/* -------------------- Dynamic styles and interface -------------------- */
 
 function addInterfaceStyles() {
   if ($("#dmExtraStyles")) return;
@@ -416,7 +432,7 @@ function addInterfaceStyles() {
       gap:9px; margin:14px 0 18px;
     }
     .dm-toolbar button, .dm-toolbar select,
-    .dm-toolbar input, .dm-editor-field input {
+    .dm-editor-field input {
       min-height:38px; max-width:100%; padding:8px 11px;
       color:var(--text); background:var(--surface);
       border:1px solid var(--border); border-radius:10px;
@@ -437,16 +453,14 @@ function addInterfaceStyles() {
       font-size:11px; color:var(--muted); font-weight:800;
     }
     .dm-editor-field input { width:100%; }
-    .dm-favorite-toggle { min-height:38px; }
+    .dm-favorite-toggle { min-height:38px; cursor:pointer; }
     .dm-tags { display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
     .dm-tag {
       display:inline-block; border-radius:6px; padding:4px 7px;
       color:var(--primary); background:var(--primary-soft);
       font-size:10px; overflow-wrap:anywhere;
     }
-    .dm-folder-label {
-      margin-top:9px; color:var(--muted); font-size:10px;
-    }
+    .dm-folder-label { margin-top:9px; color:var(--muted); font-size:10px; }
     .dm-card-actions {
       display:flex; flex-wrap:wrap; gap:7px;
       margin-top:12px; position:relative; z-index:2;
@@ -456,9 +470,7 @@ function addInterfaceStyles() {
       border-radius:8px; background:var(--surface);
       color:var(--text); cursor:pointer; font-size:11px;
     }
-    .dm-help {
-      color:var(--muted); font-size:11px; line-height:1.7;
-    }
+    .dm-help { color:var(--muted); font-size:11px; line-height:1.7; }
     @media(max-width:520px) {
       .dm-editor-fields { grid-template-columns:1fr; }
       .dm-toolbar button, .dm-toolbar select { flex:1 1 auto; }
@@ -468,14 +480,38 @@ function addInterfaceStyles() {
   document.head.appendChild(style);
 }
 
+function setFilter(filter, folder = "") {
+  currentFilter = filter;
+  currentFolder = folder;
+
+  const toolbar = $("#dmToolbar");
+
+  toolbar?.querySelectorAll("[data-filter]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.filter === filter);
+  });
+
+  const folderSelect = $("#dmFolderFilter");
+  if (folderSelect) folderSelect.value = folder;
+
+  if (elements.breadcrumb && currentView === "notes") {
+    elements.breadcrumb.textContent =
+      filter === "trash" ? "Trash" :
+      filter === "favorites" ? "Favorites" :
+      filter === "folder" ? folder :
+      "My Notes";
+  }
+
+  renderNotes();
+}
+
 function setupDynamicInterface() {
   if (editorControlsReady) return;
 
   addInterfaceStyles();
 
-  const notesSearchWrap = elements.notesSearch?.closest(".notes-page-search");
+  const toolbarHost = $("#notesToolbarHost");
 
-  if (notesSearchWrap) {
+  if (toolbarHost && !$("#dmToolbar")) {
     const toolbar = document.createElement("div");
     toolbar.className = "dm-toolbar";
     toolbar.id = "dmToolbar";
@@ -491,53 +527,45 @@ function setupDynamicInterface() {
       <span class="dm-spacer"></span>
       <button type="button" id="dmExport">Export backup</button>
       <button type="button" id="dmImport">Restore backup</button>
+      <button type="button" id="dmEmptyTrash">Empty trash</button>
       <input type="file" id="dmBackupFile"
         accept=".json,application/json" hidden>
     `;
 
-    notesSearchWrap.insertAdjacentElement("afterend", toolbar);
+    toolbarHost.appendChild(toolbar);
 
     toolbar.querySelectorAll("[data-filter]").forEach((button) => {
       button.addEventListener("click", () => {
-        currentFilter = button.dataset.filter;
-        currentFolder = "";
-
-        toolbar.querySelectorAll("[data-filter]").forEach((item) => {
-          item.classList.toggle("active", item === button);
-        });
-
-        $("#dmFolderFilter").value = "";
-        renderNotes();
+        setFilter(button.dataset.filter);
       });
     });
 
-    $("#dmFolderFilter").addEventListener("change", (event) => {
-      currentFolder = event.target.value;
-      currentFilter = currentFolder ? "folder" : "all";
-
-      toolbar.querySelectorAll("[data-filter]").forEach((item) => {
-        item.classList.toggle("active", item.dataset.filter === currentFilter);
-      });
-
-      renderNotes();
+    $("#dmFolderFilter")?.addEventListener("change", (event) => {
+      const folder = event.target.value;
+      setFilter(folder ? "folder" : "all", folder);
     });
 
-    $("#dmNewFolder").addEventListener("click", createFolder);
-    $("#dmExport").addEventListener("click", exportBackup);
-    $("#dmImport").addEventListener("click", () => $("#dmBackupFile").click());
+    $("#dmNewFolder")?.addEventListener("click", createFolder);
+    $("#dmExport")?.addEventListener("click", exportBackup);
+    $("#dmEmptyTrash")?.addEventListener("click", emptyTrash);
 
-    $("#dmBackupFile").addEventListener("change", async (event) => {
+    $("#dmImport")?.addEventListener("click", () => {
+      $("#dmBackupFile")?.click();
+    });
+
+    $("#dmBackupFile")?.addEventListener("change", async (event) => {
       const file = event.target.files?.[0];
 
       if (file) await importBackup(file);
 
+      // Allow choosing the same file again.
       event.target.value = "";
     });
   }
 
   const editorPanel = elements.editor?.querySelector(".editor-panel");
 
-  if (editorPanel) {
+  if (editorPanel && !$("#dmEditorFields")) {
     const fields = document.createElement("div");
     fields.className = "dm-editor-fields";
     fields.id = "dmEditorFields";
@@ -575,31 +603,10 @@ function setupDynamicInterface() {
 
     editorPanel.appendChild(fields);
 
-    $("#dmNoteFolder").addEventListener("input", scheduleAutosave);
-    $("#dmNoteTags").addEventListener("input", scheduleAutosave);
+    $("#dmNoteFolder")?.addEventListener("input", scheduleAutosave);
+    $("#dmNoteTags")?.addEventListener("input", scheduleAutosave);
 
-    $("#dmFavoriteToggle").addEventListener("click", async () => {
-      if (!currentNoteId) {
-        await saveCurrentNote(false);
-
-        if (!currentNoteId) {
-          showToast("Write a title or some content first.");
-          return;
-        }
-      }
-
-      const note = await getNote(currentNoteId);
-      if (!note) return;
-
-      note.favorite = !note.favorite;
-      note.updatedAt = new Date().toISOString();
-
-      await putNote(note);
-      updateFavoriteButton(note.favorite);
-      await renderNotes();
-
-      showToast(note.favorite ? "Added to favorites." : "Removed from favorites.");
-    });
+    $("#dmFavoriteToggle")?.addEventListener("click", toggleCurrentFavorite);
   }
 
   editorControlsReady = true;
@@ -620,22 +627,22 @@ async function refreshFolderOptions() {
   const select = $("#dmFolderFilter");
   const suggestions = $("#dmFolderSuggestions");
 
-  if (!select) return;
-
   const notes = await getAllNotes();
   const folders = getAllFolders(notes);
 
-  select.innerHTML = `
-    <option value="">All folders</option>
-    ${folders.map((folder) =>
-      `<option value="${escapeHTML(folder)}">${escapeHTML(folder)}</option>`
-    ).join("")}
-  `;
+  if (select) {
+    select.innerHTML = `
+      <option value="">All folders</option>
+      ${folders.map((folder) =>
+        `<option value="${escapeHTML(folder)}">${escapeHTML(folder)}</option>`
+      ).join("")}`;
 
-  select.value = folders.includes(currentFolder) ? currentFolder : "";
-  if (!select.value && currentFilter === "folder") {
-    currentFilter = "all";
-    currentFolder = "";
+    select.value = folders.includes(currentFolder) ? currentFolder : "";
+
+    if (!select.value && currentFilter === "folder") {
+      currentFilter = "all";
+      currentFolder = "";
+    }
   }
 
   if (suggestions) {
@@ -646,11 +653,10 @@ async function refreshFolderOptions() {
 }
 
 async function createFolder() {
-  const folder = window.prompt("Enter a folder name:");
+  const answer = window.prompt("Enter a folder name:");
+  if (answer === null) return;
 
-  if (folder === null) return;
-
-  const name = folder.trim();
+  const name = answer.trim();
 
   if (!name) {
     showToast("Folder name cannot be empty.");
@@ -663,17 +669,14 @@ async function createFolder() {
   }
 
   const notes = await getAllNotes();
-  const exists = getAllFolders(notes).some(
-    (item) => item.toLocaleLowerCase() === name.toLocaleLowerCase()
-  );
 
-  if (exists) {
+  if (getAllFolders(notes).some(
+    (folder) => folder.toLocaleLowerCase() === name.toLocaleLowerCase()
+  )) {
     showToast("That folder already exists.");
     return;
   }
 
-  // Folder names are derived from notes, so save an empty note
-  // in the requested folder to create the folder itself.
   const now = new Date().toISOString();
 
   await putNote({
@@ -689,13 +692,9 @@ async function createFolder() {
     isFolderPlaceholder: true
   });
 
-  currentFilter = "folder";
-  currentFolder = name;
-
-  await refreshFolderOptions();
+  setFilter("folder", name);
   await renderNotes();
-
-  showToast("Folder created. Open the note to add content.");
+  showToast("Folder created. Create a note and select this folder.");
 }
 
 /* -------------------- Render notes -------------------- */
@@ -731,7 +730,7 @@ async function renderNotes() {
 
     const notesTerm = elements.notesSearch?.value.trim() || "";
     const results = getVisibleNotes(notes, notesTerm)
-      .filter((note) => !note.isFolderPlaceholder || note.deletedAt);
+      .filter((note) => !note.isFolderPlaceholder || Boolean(note.deletedAt));
 
     if (elements.allNotesGrid) {
       elements.allNotesGrid.innerHTML = results.length
@@ -764,33 +763,33 @@ function showView(view) {
     button.classList.toggle("active", button.dataset.view === view);
   });
 
-  const titles = {
-    home: "Dashboard",
-    notes: currentFilter === "trash"
-      ? "Trash"
-      : currentFilter === "favorites"
-        ? "Favorites"
-        : "My Notes",
-    editor: "Note Editor"
-  };
+  const title = view === "notes"
+    ? currentFilter === "trash" ? "Trash"
+      : currentFilter === "favorites" ? "Favorites"
+      : currentFilter === "folder" ? currentFolder
+      : "My Notes"
+    : view === "home" ? "Dashboard"
+    : view === "editor" ? "Note Editor"
+    : placeholderPages[view]?.title || "Dashboard";
 
-  if (elements.breadcrumb) {
-    elements.breadcrumb.textContent =
-      titles[view] || placeholderPages[view]?.title || "Dashboard";
-  }
+  if (elements.breadcrumb) elements.breadcrumb.textContent = title;
 
   elements.sidebar?.classList.remove("open");
 
-  if (view === "notes" || view === "home") {
-    renderNotes();
-  }
+  if (view === "notes" || view === "home") renderNotes();
 
   if (placeholderPages[view]) {
     const page = placeholderPages[view];
 
-    $("#placeholderTitle").textContent = page.title;
-    $("#placeholderIcon").textContent = page.icon;
-    $("#placeholderDescription").textContent = page.description;
+    const placeholderTitle = $("#placeholderTitle");
+    const placeholderIcon = $("#placeholderIcon");
+    const placeholderDescription = $("#placeholderDescription");
+
+    if (placeholderTitle) placeholderTitle.textContent = page.title;
+    if (placeholderIcon) placeholderIcon.textContent = page.icon;
+    if (placeholderDescription) {
+      placeholderDescription.textContent = page.description;
+    }
   }
 
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -799,11 +798,13 @@ function showView(view) {
 /* -------------------- Create and open notes -------------------- */
 
 async function createNewNote() {
+  clearTimeout(autosaveTimer);
+
   currentNoteId = null;
 
-  elements.title.value = "";
-  elements.content.value = "";
-  elements.editorDate.textContent = "New note";
+  if (elements.title) elements.title.value = "";
+  if (elements.content) elements.content.value = "";
+  if (elements.editorDate) elements.editorDate.textContent = "New note";
 
   if ($("#dmNoteFolder")) $("#dmNoteFolder").value = currentFolder || "";
   if ($("#dmNoteTags")) $("#dmNoteTags").value = "";
@@ -812,7 +813,7 @@ async function createNewNote() {
   setSaveStatus("Not saved yet");
 
   showView("editor");
-  elements.title.focus();
+  elements.title?.focus();
 }
 
 async function openNote(id) {
@@ -830,21 +831,24 @@ async function openNote(id) {
       return;
     }
 
+    clearTimeout(autosaveTimer);
     currentNoteId = note.id;
-    elements.title.value = note.title || "";
-    elements.content.value = note.content || "";
-    elements.editorDate.textContent =
-      "Last edited " + formatDate(note.updatedAt);
+
+    if (elements.title) elements.title.value = note.title || "";
+    if (elements.content) elements.content.value = note.content || "";
+
+    if (elements.editorDate) {
+      elements.editorDate.textContent = "Last edited " + formatDate(note.updatedAt);
+    }
 
     if ($("#dmNoteFolder")) $("#dmNoteFolder").value = note.folder || "";
     if ($("#dmNoteTags")) $("#dmNoteTags").value = (note.tags || []).join(", ");
 
     updateFavoriteButton(note.favorite);
     setSaveStatus("Saved on this device", true);
-
     showView("editor");
   } catch (error) {
-    console.error(error);
+    console.error("Could not open note:", error);
     showToast("Could not open this note.");
   }
 }
@@ -855,82 +859,114 @@ function scheduleAutosave() {
   setSaveStatus("Unsaved changes");
 
   clearTimeout(autosaveTimer);
-
   autosaveTimer = setTimeout(() => {
     saveCurrentNote(false);
   }, 700);
 }
 
-async function saveCurrentNote(showMessage = true) {
-  if (isSaving) {
-    saveQueue = saveQueue.then(() => saveCurrentNote(showMessage));
-    return saveQueue;
-  }
+function saveCurrentNote(showMessage = true) {
+  // Queue saves so two rapid clicks/autosaves do not overwrite each other.
+  const operation = async () => {
+    const title = elements.title?.value.trim() || "";
+    const content = elements.content?.value || "";
+    const folder = ($("#dmNoteFolder")?.value || "").trim().slice(0, 80);
+    const tags = parseTags($("#dmNoteTags")?.value || "");
 
-  const title = elements.title.value.trim();
-  const content = elements.content.value;
+    if (!title && !content.trim()) {
+      if (currentNoteId) {
+        const existing = await getNote(currentNoteId);
 
-  const folder = ($("#dmNoteFolder")?.value || "").trim().slice(0, 80);
-  const tags = parseTags($("#dmNoteTags")?.value || "");
+        if (existing) {
+          existing.folder = folder;
+          existing.tags = tags;
+          existing.updatedAt = new Date().toISOString();
+          await putNote(existing);
+          await renderNotes();
+        }
+      }
 
-  if (!title && !content.trim()) {
-    if (currentNoteId) {
-      const existing = await getNote(currentNoteId);
+      setSaveStatus("Nothing to save");
+      return;
+    }
 
-      if (existing) {
-        existing.folder = folder;
-        existing.tags = tags;
-        await putNote(existing);
+    setSaveStatus("Saving…");
+
+    try {
+      const original = currentNoteId
+        ? await getNote(currentNoteId)
+        : null;
+
+      const now = new Date().toISOString();
+
+      const note = normaliseNote({
+        ...(original || {}),
+        id: currentNoteId || makeId(),
+        title: title || "Untitled note",
+        content,
+        folder,
+        tags,
+        favorite: original?.favorite === true,
+        deletedAt: null,
+        createdAt: original?.createdAt || now,
+        updatedAt: now
+      });
+
+      await putNote(note);
+
+      currentNoteId = note.id;
+
+      if (elements.editorDate) {
+        elements.editorDate.textContent = "Last edited " + formatDate(now);
+      }
+
+      updateFavoriteButton(note.favorite);
+      setSaveStatus("Saved on this device", true);
+
+      await renderNotes();
+
+      if (showMessage) showToast("Note saved on this device.");
+    } catch (error) {
+      console.error("Save failed:", error);
+      setSaveStatus("Save failed");
+      showToast("Could not save. Check available device storage.");
+    }
+  };
+
+  saveQueue = saveQueue.then(operation, operation);
+  return saveQueue;
+}
+
+async function toggleCurrentFavorite() {
+  try {
+    if (!currentNoteId) {
+      await saveCurrentNote(false);
+
+      if (!currentNoteId) {
+        showToast("Write a title or some content first.");
+        return;
       }
     }
 
-    setSaveStatus("Nothing to save");
-    return;
-  }
+    const note = await getNote(currentNoteId);
+    if (!note) return;
 
-  isSaving = true;
-  setSaveStatus("Saving…");
-
-  try {
-    const original = currentNoteId
-      ? await getNote(currentNoteId)
-      : null;
-
-    const now = new Date().toISOString();
-
-    const note = normaliseNote({
-      ...(original || {}),
-      id: currentNoteId || makeId(),
-      title: title || "Untitled note",
-      content,
-      folder,
-      tags,
-      favorite: original?.favorite === true,
-      deletedAt: null,
-      createdAt: original?.createdAt || now,
-      updatedAt: now
-    });
+    note.favorite = !note.favorite;
+    note.updatedAt = new Date().toISOString();
 
     await putNote(note);
-
-    currentNoteId = note.id;
-    elements.editorDate.textContent = "Last edited " + formatDate(now);
     updateFavoriteButton(note.favorite);
-    setSaveStatus("Saved on this device", true);
-
     await renderNotes();
 
-    if (showMessage) showToast("Note saved on this device.");
+    showToast(note.favorite
+      ? "Added to favorites."
+      : "Removed from favorites.");
   } catch (error) {
-    console.error("Save failed:", error);
-    setSaveStatus("Save failed");
-    showToast("Could not save. Check available device storage.");
-  } finally {
-    isSaving = false;
+    console.error("Could not update favorite:", error);
+    showToast("Could not update favorite.");
   }
 }
 
-/* -------------------- Trash and restore -------------------- */
+/* -------------------- Trash, restore and permanent delete -------------------- */
 
 async function deleteCurrentNote() {
   if (!currentNoteId) {
@@ -957,15 +993,16 @@ async function deleteCurrentNote() {
 
     await putNote(note);
 
+    clearTimeout(autosaveTimer);
     currentNoteId = null;
-    currentFilter = "all";
 
-    await renderNotes();
+    setFilter("all");
     showView("notes");
 
+    await renderNotes();
     showToast("Note moved to Trash. You can restore it.");
   } catch (error) {
-    console.error(error);
+    console.error("Could not move note to Trash:", error);
     showToast("Could not move this note to Trash.");
   }
 }
@@ -974,8 +1011,9 @@ async function restoreNote(id) {
   try {
     const note = await getNote(id);
 
-    if (!note) {
-      showToast("Note not found.");
+    if (!note || !note.deletedAt) {
+      showToast("This note is not in Trash.");
+      await renderNotes();
       return;
     }
 
@@ -985,16 +1023,16 @@ async function restoreNote(id) {
     await putNote(note);
     await renderNotes();
 
-    showToast("Note restored.");
+    showToast("Note restored successfully.");
   } catch (error) {
-    console.error(error);
+    console.error("Restore failed:", error);
     showToast("Could not restore the note.");
   }
 }
 
 async function permanentlyDeleteNote(id) {
   const confirmed = window.confirm(
-    "Permanently delete this note? This cannot be undone. Export a backup first if needed."
+    "Permanently delete this note? This cannot be undone."
   );
 
   if (!confirmed) return;
@@ -1012,47 +1050,47 @@ async function permanentlyDeleteNote(id) {
 
     showToast("Note permanently deleted.");
   } catch (error) {
-    console.error(error);
+    console.error("Permanent delete failed:", error);
     showToast("Could not permanently delete the note.");
   }
 }
 
 async function emptyTrash() {
-  const notes = await getAllNotes();
-  const deleted = notes.filter((note) => note.deletedAt);
-
-  if (!deleted.length) {
-    showToast("Trash is already empty.");
-    return;
-  }
-
-  const confirmed = window.confirm(
-    `Permanently delete ${deleted.length} note(s) from Trash? This cannot be undone.`
-  );
-
-  if (!confirmed) return;
-
   try {
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-    const store = transaction.objectStore(STORE_NAME);
+    const notes = await getAllNotes();
+    const deleted = notes.filter((note) => Boolean(note.deletedAt));
 
-    deleted.forEach((note) => store.delete(note.id));
+    if (!deleted.length) {
+      showToast("Trash is already empty.");
+      return;
+    }
 
-    transaction.oncomplete = async () => {
-      await renderNotes();
-      showToast("Trash emptied.");
-    };
+    const confirmed = window.confirm(
+      `Permanently delete ${deleted.length} note(s) from Trash? This cannot be undone.`
+    );
 
-    transaction.onerror = () => {
-      showToast("Could not empty Trash.");
-    };
+    if (!confirmed) return;
+
+    await new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
+
+      deleted.forEach((note) => store.delete(note.id));
+
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    });
+
+    await renderNotes();
+    showToast("Trash emptied.");
   } catch (error) {
-    console.error(error);
+    console.error("Empty Trash failed:", error);
     showToast("Could not empty Trash.");
   }
 }
 
-/* -------------------- Backup and restore -------------------- */
+/* -------------------- Backup export and restore/import -------------------- */
 
 async function exportBackup() {
   try {
@@ -1067,45 +1105,46 @@ async function exportBackup() {
 
     const blob = new Blob(
       [JSON.stringify(backup, null, 2)],
-      { type: "application/json" }
+      { type: "application/json;charset=utf-8" }
     );
 
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
 
     link.href = url;
-    link.download = `developer-mastermind-backup-${new Date()
-      .toISOString().slice(0, 10)}.json`;
+    link.download =
+      `developer-mastermind-backup-${new Date().toISOString().slice(0, 10)}.json`;
 
+    link.style.display = "none";
     document.body.appendChild(link);
     link.click();
     link.remove();
 
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
 
-    showToast("Backup exported. Keep the file somewhere safe.");
+    showToast("Backup export started. Check your Downloads folder.");
   } catch (error) {
-    console.error(error);
-    showToast("Could not export the backup.");
+    console.error("Backup export failed:", error);
+    showToast("Could not export backup. Please try again.");
   }
 }
 
 async function importBackup(file) {
+  if (!file) return;
+
   try {
     if (file.size > 25 * 1024 * 1024) {
-      showToast("Backup is too large (maximum 25 MB).");
+      showToast("Backup is too large. Maximum size is 25 MB.");
       return;
     }
 
     const text = await file.text();
     const parsed = JSON.parse(text);
 
-    const incoming = Array.isArray(parsed)
-      ? parsed
-      : parsed?.notes;
+    const incoming = Array.isArray(parsed) ? parsed : parsed?.notes;
 
     if (!Array.isArray(incoming)) {
-      throw new Error("Invalid backup format.");
+      throw new Error("The file does not contain a notes array.");
     }
 
     if (incoming.length > 10000) {
@@ -1116,42 +1155,47 @@ async function importBackup(file) {
     const validNotes = incoming.filter((note) =>
       note &&
       typeof note === "object" &&
-      typeof note.id === "string" &&
-      note.id.length > 0 &&
-      typeof note.content === "string" &&
+      !Array.isArray(note) &&
+      (typeof note.id === "string" || typeof note.id === "number") &&
+      String(note.id).length > 0 &&
+      (typeof note.content === "string" || note.content == null) &&
       (typeof note.title === "string" || note.title == null)
     );
 
-    if (!validNotes.length && incoming.length) {
+    if (validNotes.length === 0 && incoming.length > 0) {
       showToast("No valid notes were found in this backup.");
       return;
     }
 
     const confirmed = window.confirm(
-      `Import ${validNotes.length} note(s)? Existing notes with the same ID will be updated. Other notes will be kept.`
+      `Import ${validNotes.length} note(s)? Notes with matching IDs will be updated. Other existing notes will be kept.`
     );
 
     if (!confirmed) return;
 
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-    const store = transaction.objectStore(STORE_NAME);
+    await new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
 
-    validNotes.forEach((rawNote) => {
-      const note = normaliseNote(rawNote);
-      store.put(note);
+      validNotes.forEach((rawNote) => {
+        const note = normaliseNote({
+          ...rawNote,
+          id: String(rawNote.id)
+        });
+
+        store.put(note);
+      });
+
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
     });
 
-    transaction.oncomplete = async () => {
-      await renderNotes();
-      showToast(`Backup restored: ${validNotes.length} note(s) imported.`);
-    };
-
-    transaction.onerror = () => {
-      showToast("Could not restore the backup.");
-    };
+    await renderNotes();
+    showToast(`Backup restored: ${validNotes.length} note(s) imported.`);
   } catch (error) {
-    console.error("Backup import failed:", error);
-    showToast("Invalid backup file. Choose a MASTERMIND JSON backup.");
+    console.error("Backup restore failed:", error);
+    showToast("Could not restore backup. Choose a valid MASTERMIND JSON file.");
   }
 }
 
@@ -1172,17 +1216,12 @@ function applyTheme(theme) {
   if (button) {
     button.textContent = effectiveTheme === "dark" ? "☼" : "◐";
     button.title = "Current theme: " + theme + ". Click to change.";
-    button.setAttribute(
-      "aria-label",
-      "Current theme: " + theme + ". Change theme."
-    );
+    button.setAttribute("aria-label", "Current theme: " + theme + ". Change theme.");
   }
 }
 
 function setTheme(theme) {
-  if (!["light", "dark", "system"].includes(theme)) {
-    theme = "system";
-  }
+  if (!["light", "dark", "system"].includes(theme)) theme = "system";
 
   try {
     localStorage.setItem("dm_theme", theme);
@@ -1251,7 +1290,7 @@ async function handleGridClick(event) {
     const action = actionButton.dataset.noteAction;
 
     if (action === "restore") await restoreNote(id);
-    if (action === "purge") await permanentlyDeleteNote(id);
+    else if (action === "purge") await permanentlyDeleteNote(id);
 
     return;
   }
@@ -1265,16 +1304,12 @@ async function handleGridClick(event) {
 
   const card = event.target.closest("[data-note-id]");
 
-  if (card) {
-    await openNote(card.dataset.noteId);
-  }
+  if (card) await openNote(card.dataset.noteId);
 }
 
 function setupNavigation() {
-  document.querySelectorAll("[data-view]").forEach((button) => {
-    button.addEventListener("click", () => {
-      showView(button.dataset.view);
-    });
+  document.querySelectorAll(".nav-item[data-view]").forEach((button) => {
+    button.addEventListener("click", () => showView(button.dataset.view));
   });
 
   $("#newNoteButton")?.addEventListener("click", createNewNote);
@@ -1291,9 +1326,7 @@ function setupNavigation() {
   $("#deleteNoteButton")?.addEventListener("click", deleteCurrentNote);
   $("#themeButton")?.addEventListener("click", cycleTheme);
 
-  $("#placeholderNotesButton")?.addEventListener("click", () => {
-    showView("notes");
-  });
+  $("#placeholderNotesButton")?.addEventListener("click", () => showView("notes"));
 
   $("#menuButton")?.addEventListener("click", () => {
     elements.sidebar?.classList.toggle("open");
@@ -1323,16 +1356,11 @@ function setupNavigation() {
   window.addEventListener("beforeinstallprompt", (event) => {
     event.preventDefault();
     deferredInstallPrompt = event;
-
-    const button = $("#installButton");
-    if (button) button.title = "Install app";
   });
 
   $("#installButton")?.addEventListener("click", async () => {
     if (!deferredInstallPrompt) {
-      showToast(
-        "Use your browser menu and choose Install app or Add to Home screen."
-      );
+      showToast("Use your browser menu and choose Install app or Add to Home screen.");
       return;
     }
 
@@ -1351,9 +1379,7 @@ function setupNavigation() {
 
 async function setupServiceWorker() {
   if (!("serviceWorker" in navigator)) {
-    if ($("#offlineStatus")) {
-      $("#offlineStatus").textContent = "Limited";
-    }
+    if ($("#offlineStatus")) $("#offlineStatus").textContent = "Limited";
     return;
   }
 
@@ -1361,16 +1387,11 @@ async function setupServiceWorker() {
     await navigator.serviceWorker.register("./sw.js");
 
     if ($("#offlineStatus")) {
-      $("#offlineStatus").textContent = navigator.onLine
-        ? "Ready"
-        : "Offline";
+      $("#offlineStatus").textContent = navigator.onLine ? "Ready" : "Offline";
     }
   } catch (error) {
     console.error("Service worker registration failed:", error);
-
-    if ($("#offlineStatus")) {
-      $("#offlineStatus").textContent = "Limited";
-    }
+    if ($("#offlineStatus")) $("#offlineStatus").textContent = "Limited";
   }
 }
 
@@ -1401,19 +1422,13 @@ async function init() {
 
   try {
     await openDatabase();
-
     await renderNotes();
     await setupServiceWorker();
   } catch (error) {
     console.error("App startup failed:", error);
+    showToast("Local database could not start. Check browser support and reload.");
 
-    showToast(
-      "Local database could not start. Check browser support and reload."
-    );
-
-    if ($("#offlineStatus")) {
-      $("#offlineStatus").textContent = "Check browser";
-    }
+    if ($("#offlineStatus")) $("#offlineStatus").textContent = "Check browser";
   }
 }
 
