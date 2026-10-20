@@ -1,0 +1,26 @@
+{
+  "id": "./",
+  "name": "Developer MASTERMIND",
+  "short_name": "MASTERMIND",
+  "description": "Your private, offline-first study workspace.",
+  "lang": "en",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#6558e8",
+  "background_color": "#f6f7fb",
+  "categories": [
+    "education",
+    "productivity",
+    "utilities"
+  ],
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
