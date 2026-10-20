@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "developer-mastermind-shell-v1";
+const CACHE_NAME = "developer-mastermind-shell-v2";
 
 const APP_FILES = [
   "./",
