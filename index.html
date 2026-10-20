@@ -12,130 +12,426 @@
 </head>
 <body>
   <div class="app-shell">
+
     <aside class="sidebar" id="sidebar">
       <div class="brand">
         <div class="brand-icon">DM</div>
-        <div><h1>DEVELOPER</h1><p>MASTERMIND</p></div>
+        <div>
+          <h1>DEVELOPER</h1>
+          <p>MASTERMIND</p>
+        </div>
       </div>
 
       <nav class="main-nav" aria-label="Main navigation">
-        <button type="button" class="nav-item active" data-view="home"><span>⌂</span> Dashboard</button>
-        <button type="button" class="nav-item" data-view="notes"><span>▤</span> My Notes</button>
-        <button type="button" class="nav-item" data-view="planner"><span>◷</span> Study Planner</button>
-        <button type="button" class="nav-item" data-view="focus"><span>◉</span> Focus Timer</button>
-        <button type="button" class="nav-item" data-view="library"><span>▧</span> Photo &amp; PDF</button>
-        <button type="button" class="nav-item" data-view="flashcards"><span>▱</span> Flashcards</button>
+        <button type="button" class="nav-item active" data-view="home">
+          <span>⌂</span> Dashboard
+        </button>
+        <button type="button" class="nav-item" data-view="notes">
+          <span>▤</span> My Notes
+        </button>
+        <button type="button" class="nav-item" data-view="planner">
+          <span>◷</span> Study Planner
+        </button>
+        <button type="button" class="nav-item" data-view="focus">
+          <span>◉</span> Focus Timer
+        </button>
+        <button type="button" class="nav-item" data-view="library">
+          <span>▧</span> Photo &amp; PDF
+        </button>
+        <button type="button" class="nav-item" data-view="flashcards">
+          <span>▱</span> Flashcards
+        </button>
       </nav>
 
       <div class="sidebar-bottom">
         <p class="sidebar-caption">PERSONAL WORKSPACE</p>
-        <button type="button" id="themeToggle" class="nav-item"><span>◐</span> Toggle Theme</button>
-        <button type="button" id="exportAppData" class="nav-item"><span>⇩</span> Export App Data</button>
+        <button type="button" id="themeToggle" class="nav-item">
+          <span>◐</span> Toggle Theme
+        </button>
+        <button type="button" id="exportAppData" class="nav-item">
+          <span>⇩</span> Export App Data
+        </button>
         <p class="small-muted">Your workspace, your progress.</p>
       </div>
     </aside>
 
     <main class="main-content">
       <header class="topbar">
-        <button type="button" id="menuToggle" class="icon-button" aria-label="Toggle navigation" aria-controls="sidebar">☰</button>
+        <button type="button" id="menuToggle" class="icon-button"
+          aria-label="Toggle navigation" aria-controls="sidebar">
+          ☰
+        </button>
         <div class="breadcrumb" id="breadcrumb">Dashboard</div>
-        <div class="topbar-actions"><span id="connectionStatus" class="status-indicator">Checking connection…</span></div>
+        <div class="topbar-actions">
+          <span id="connectionStatus" class="status-indicator">
+            Checking connection…
+          </span>
+        </div>
       </header>
 
-      <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+      <div id="toastContainer" class="toast-container"
+        aria-live="polite" aria-atomic="true"></div>
 
+      <!-- DASHBOARD -->
       <section id="homeView" class="view">
         <div class="page-heading">
-          <div><p class="eyebrow">YOUR PERSONAL WORKSPACE</p><h2>Dashboard</h2><p class="muted">Plan your learning. Stay focused. Keep growing.</p></div>
-          <button type="button" id="newNoteButton" class="primary-button">+ New Note</button>
+          <div>
+            <p class="eyebrow">YOUR PERSONAL WORKSPACE</p>
+            <h2>Dashboard</h2>
+            <p class="muted">Plan your learning. Stay focused. Keep growing.</p>
+          </div>
+          <button type="button" id="newNoteButton" class="primary-button">
+            + New Note
+          </button>
         </div>
 
         <div class="dashboard-grid">
-          <button type="button" class="dashboard-card" data-view="notes"><span class="card-icon">▤</span><h3>My Notes</h3><p>Write, organise and find your notes.</p><span class="card-link">Open Notes →</span></button>
-          <button type="button" class="dashboard-card" data-view="planner"><span class="card-icon">◷</span><h3>Study Planner</h3><p>Organise your study tasks and deadlines.</p><span class="card-link">Plan Study →</span></button>
-          <button type="button" class="dashboard-card" data-view="focus"><span class="card-icon">◉</span><h3>Focus Timer</h3><p>Use focused study sessions and breaks.</p><span class="card-link">Start Focus →</span></button>
-          <button type="button" class="dashboard-card" data-view="library"><span class="card-icon">▧</span><h3>Photo &amp; PDF</h3><p>Keep study files together.</p><span class="card-link">Open Library →</span></button>
-          <button type="button" class="dashboard-card" data-view="flashcards"><span class="card-icon">▱</span><h3>Flashcards</h3><p>Review questions and track learning.</p><span class="card-link">Revise Now →</span></button>
+          <button type="button" class="dashboard-card" data-view="notes">
+            <span class="card-icon">▤</span>
+            <h3>My Notes</h3>
+            <p>Write, organise and find your notes.</p>
+            <span class="card-link">Open Notes →</span>
+          </button>
+
+          <button type="button" class="dashboard-card" data-view="planner">
+            <span class="card-icon">◷</span>
+            <h3>Study Planner</h3>
+            <p>Organise your study tasks and deadlines.</p>
+            <span class="card-link">Plan Study →</span>
+          </button>
+
+          <button type="button" class="dashboard-card" data-view="focus">
+            <span class="card-icon">◉</span>
+            <h3>Focus Timer</h3>
+            <p>Use focused study sessions and breaks.</p>
+            <span class="card-link">Start Focus →</span>
+          </button>
+
+          <button type="button" class="dashboard-card" data-view="library">
+            <span class="card-icon">▧</span>
+            <h3>Photo &amp; PDF</h3>
+            <p>Keep study files together.</p>
+            <span class="card-link">Open Library →</span>
+          </button>
+
+          <button type="button" class="dashboard-card" data-view="flashcards">
+            <span class="card-icon">▱</span>
+            <h3>Flashcards</h3>
+            <p>Review questions and track learning.</p>
+            <span class="card-link">Revise Now →</span>
+          </button>
         </div>
 
         <section class="panel dashboard-notes">
-          <div class="section-heading"><div><h3>Quick Notes</h3><p class="muted">Your saved notes appear in the Notes section.</p></div><button type="button" class="secondary-button" data-view="notes">View Notes</button></div>
+          <div class="section-heading">
+            <div>
+              <h3>Quick Notes</h3>
+              <p class="muted">Your saved notes appear in the Notes section.</p>
+            </div>
+            <button type="button" class="secondary-button" data-view="notes">
+              View Notes
+            </button>
+          </div>
         </section>
       </section>
 
+      <!-- NOTES -->
       <section id="notesView" class="view" hidden>
-        <div class="page-heading"><div><p class="eyebrow">YOUR KNOWLEDGE BASE</p><h2>My Notes</h2><p class="muted">Create and organise your personal notes.</p></div><button type="button" id="notesNewButton" class="primary-button">+ New Note</button></div>
-        <div class="toolbar">
-          <label class="search-field"><span>⌕</span><input id="noteSearch" type="search" placeholder="Search notes…" autocomplete="off"></label>
-          <select id="folderFilter" aria-label="Filter by folder"><option value="all">All folders</option><option value="General">General</option><option value="Study">Study</option><option value="Personal">Personal</option><option value="Work">Work</option></select>
-          <select id="noteSort" aria-label="Sort notes"><option value="updated">Recently updated</option><option value="created">Recently created</option><option value="title">Title A–Z</option></select>
-          <button type="button" id="favoritesFilter" class="secondary-button">☆ Favorites</button>
-          <button type="button" id="trashFilter" class="secondary-button">Trash</button>
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">YOUR KNOWLEDGE BASE</p>
+            <h2>My Notes</h2>
+            <p class="muted">Create and organise your personal notes.</p>
+          </div>
+          <button type="button" id="notesNewButton" class="primary-button">
+            + New Note
+          </button>
         </div>
+
+        <div class="toolbar">
+          <label class="search-field">
+            <span>⌕</span>
+            <input id="noteSearch" type="search"
+              placeholder="Search notes…" autocomplete="off">
+          </label>
+
+          <select id="folderFilter" aria-label="Filter by folder">
+            <option value="all">All folders</option>
+            <option value="General">General</option>
+            <option value="Study">Study</option>
+            <option value="Personal">Personal</option>
+            <option value="Work">Work</option>
+          </select>
+
+          <select id="noteSort" aria-label="Sort notes">
+            <option value="updated">Recently updated</option>
+            <option value="created">Recently created</option>
+            <option value="title">Title A–Z</option>
+          </select>
+
+          <button type="button" id="favoritesFilter" class="secondary-button">
+            ☆ Favorites
+          </button>
+          <button type="button" id="trashFilter" class="secondary-button">
+            Trash
+          </button>
+        </div>
+
         <div id="notesGrid" class="notes-grid"></div>
-        <p id="notesEmpty" class="empty-state" hidden>No notes to display. Create your first note.</p>
+        <p id="notesEmpty" class="empty-state" hidden>
+          No notes to display. Create your first note.
+        </p>
       </section>
 
+      <!-- NOTE EDITOR -->
       <section id="editorView" class="view" hidden>
-        <div class="page-heading"><div><p class="eyebrow">NOTE EDITOR</p><h2 id="editorHeading">Create Note</h2></div><button type="button" id="backToNotes" class="secondary-button">← Back to Notes</button></div>
-        <form id="noteForm" class="panel editor-form">
-          <label for="noteTitle">Title</label><input id="noteTitle" name="title" type="text" maxlength="200" placeholder="Give your note a title">
-          <label for="noteContent">Content</label><textarea id="noteContent" name="content" rows="12" placeholder="Write your ideas here…"></textarea>
-          <div class="form-row">
-            <div class="form-field"><label for="noteFolder">Folder</label><select id="noteFolder" name="folder"><option>General</option><option>Study</option><option>Personal</option><option>Work</option></select></div>
-            <div class="form-field"><label for="noteTags">Tags</label><input id="noteTags" name="tags" type="text" placeholder="study, ideas, project"></div>
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">NOTE EDITOR</p>
+            <h2 id="editorHeading">Create Note</h2>
           </div>
-          <label class="checkbox-row"><input id="noteFavorite" name="favorite" type="checkbox"> Mark as favorite</label>
-          <div class="form-actions"><button type="submit" id="saveNoteButton" class="primary-button">Save Note</button><button type="button" id="deleteNoteButton" class="danger-button">Move to Trash</button></div>
+          <button type="button" id="backToNotes" class="secondary-button">
+            ← Back to Notes
+          </button>
+        </div>
+
+        <form id="noteForm" class="panel editor-form">
+          <label for="noteTitle">Title</label>
+          <input id="noteTitle" name="title" type="text"
+            maxlength="200" placeholder="Give your note a title">
+
+          <label for="noteContent">Content</label>
+          <textarea id="noteContent" name="content" rows="12"
+            placeholder="Write your ideas here…"></textarea>
+
+          <div class="form-row">
+            <div class="form-field">
+              <label for="noteFolder">Folder</label>
+              <select id="noteFolder" name="folder">
+                <option value="General">General</option>
+                <option value="Study">Study</option>
+                <option value="Personal">Personal</option>
+                <option value="Work">Work</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="noteTags">Tags</label>
+              <input id="noteTags" name="tags" type="text"
+                placeholder="study, ideas, project">
+            </div>
+          </div>
+
+          <label class="checkbox-row">
+            <input id="noteFavorite" name="favorite" type="checkbox">
+            Mark as favorite
+          </label>
+
+          <div class="form-actions">
+            <button type="submit" id="saveNoteButton" class="primary-button">
+              Save Note
+            </button>
+            <button type="button" id="deleteNoteButton" class="danger-button">
+              Move to Trash
+            </button>
+          </div>
         </form>
       </section>
 
+      <!-- STUDY PLANNER -->
       <section id="plannerView" class="view" hidden>
-        <div class="page-heading"><div><p class="eyebrow">PLAN YOUR PROGRESS</p><h2>Study Planner</h2><p class="muted">Organise tasks, deadlines and study goals.</p></div></div>
-        <div class="stats-grid">
-          <div class="stat-card"><span>Total Tasks</span><strong id="plannerTotal">0</strong></div>
-          <div class="stat-card"><span>Completed</span><strong id="plannerCompleted">0</strong></div>
-          <div class="stat-card"><span>Pending</span><strong id="plannerPending">0</strong></div>
-        </div>
-        <form id="plannerForm" class="panel">
-          <h3>Add Study Task</h3><label for="plannerTask">Task name</label><input id="plannerTask" type="text" maxlength="200" placeholder="e.g. Revise Chapter 3" required>
-          <div class="form-row">
-            <div class="form-field"><label for="plannerDate">Due date</label><input id="plannerDate" type="date"></div>
-            <div class="form-field"><label for="plannerPriority">Priority</label><select id="plannerPriority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></div>
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">PLAN YOUR PROGRESS</p>
+            <h2>Study Planner</h2>
+            <p class="muted">Organise tasks, deadlines and study goals.</p>
           </div>
-          <label class="checkbox-row"><input id="plannerReminder" type="checkbox"> Request a reminder</label>
-          <p class="muted small-text">Reminder requests are saved, but this checkbox alone does not schedule guaranteed background notifications.</p>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <span>Total Tasks</span>
+            <strong id="plannerTotal">0</strong>
+          </div>
+          <div class="stat-card">
+            <span>Completed</span>
+            <strong id="plannerCompleted">0</strong>
+          </div>
+          <div class="stat-card">
+            <span>Pending</span>
+            <strong id="plannerPending">0</strong>
+          </div>
+        </div>
+
+        <form id="plannerForm" class="panel">
+          <h3>Add Study Task</h3>
+
+          <label for="plannerTask">Task name</label>
+          <input id="plannerTask" type="text" maxlength="200"
+            placeholder="e.g. Revise Chapter 3" required>
+
+          <div class="form-row">
+            <div class="form-field">
+              <label for="plannerDate">Due date</label>
+              <input id="plannerDate" type="date">
+            </div>
+            <div class="form-field">
+              <label for="plannerPriority">Priority</label>
+              <select id="plannerPriority">
+                <option value="low">Low</option>
+                <option value="medium" selected>Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+          </div>
+
+          <label class="checkbox-row">
+            <input id="plannerReminder" type="checkbox">
+            Request a reminder
+          </label>
+
+          <p class="muted small-text">
+            Reminder requests may be saved, but background notifications
+            depend on browser support and permissions.
+          </p>
+
           <button type="submit" class="primary-button">Add Task</button>
         </form>
-        <div class="section-heading"><h3>Your Tasks</h3><select id="plannerFilter" aria-label="Filter planner tasks"><option value="all">All tasks</option><option value="pending">Pending</option><option value="completed">Completed</option></select></div>
+
+        <div class="section-heading">
+          <h3>Your Tasks</h3>
+          <select id="plannerFilter" aria-label="Filter planner tasks">
+            <option value="all">All tasks</option>
+            <option value="pending">Pending</option>
+            <option value="completed">Completed</option>
+          </select>
+        </div>
+
         <div id="plannerTaskList" class="task-list"></div>
       </section>
 
+      <!-- FOCUS TIMER -->
       <section id="focusView" class="view" hidden>
-        <div class="page-heading"><div><p class="eyebrow">ONE THING AT A TIME</p><h2>Focus Timer</h2><p class="muted">Work in focused sessions and take breaks.</p></div></div>
-        <div class="panel focus-panel">
-          <label for="focusTask">What are you working on?</label><input id="focusTask" type="text" placeholder="e.g. Mathematics revision">
-          <div class="focus-modes"><button type="button" class="focus-mode active" data-focus-minutes="25">Focus · 25 min</button><button type="button" class="focus-mode" data-focus-minutes="5">Short Break · 5 min</button><button type="button" class="focus-mode" data-focus-minutes="15">Long Break · 15 min</button></div>
-          <div id="focusClock" class="focus-clock" role="timer" aria-live="off">25:00</div><p id="focusStatus" class="muted">Ready to focus?</p>
-          <div class="focus-controls"><button type="button" id="focusStart" class="primary-button">Start</button><button type="button" id="focusPause" class="secondary-button">Pause</button><button type="button" id="focusReset" class="secondary-button">Reset</button></div>
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">ONE THING AT A TIME</p>
+            <h2>Focus Timer</h2>
+            <p class="muted">Work in focused sessions and take breaks.</p>
+          </div>
         </div>
-        <section class="panel"><h3>Session History</h3><div id="focusHistory" class="history-list"></div></section>
+
+        <div class="panel focus-panel">
+          <label for="focusTask">What are you working on?</label>
+          <input id="focusTask" type="text"
+            placeholder="e.g. Mathematics revision">
+
+          <div class="focus-modes">
+            <button type="button" class="focus-mode active"
+              data-focus-minutes="25">Focus · 25 min</button>
+            <button type="button" class="focus-mode"
+              data-focus-minutes="5">Short Break · 5 min</button>
+            <button type="button" class="focus-mode"
+              data-focus-minutes="15">Long Break · 15 min</button>
+          </div>
+
+          <div id="focusClock" class="focus-clock" role="timer"
+            aria-live="off">25:00</div>
+          <p id="focusStatus" class="muted">Ready to focus?</p>
+
+          <div class="focus-controls">
+            <button type="button" id="focusStart" class="primary-button">
+              Start
+            </button>
+            <button type="button" id="focusPause" class="secondary-button">
+              Pause
+            </button>
+            <button type="button" id="focusReset" class="secondary-button">
+              Reset
+            </button>
+          </div>
+        </div>
+
+        <section class="panel">
+          <h3>Session History</h3>
+          <div id="focusHistory" class="history-list"></div>
+        </section>
       </section>
 
+      <!-- PHOTO AND PDF LIBRARY -->
       <section id="libraryView" class="view" hidden>
-        <div class="page-heading"><div><p class="eyebrow">YOUR STUDY FILES</p><h2>Photo &amp; PDF Library</h2><p class="muted">Keep images and documents in one place.</p></div></div>
-        <div class="panel"><label for="libraryFiles">Choose images or PDF files</label><input id="libraryFiles" type="file" accept="image/*,application/pdf" multiple><p class="muted small-text">Large files may not fit browser storage. Keep separate copies of important documents.</p><button type="button" id="imagesToPdfButton" class="secondary-button">Print Images / Save as PDF</button></div>
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">YOUR STUDY FILES</p>
+            <h2>Photo &amp; PDF Library</h2>
+            <p class="muted">Keep images and documents in one place.</p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <label for="libraryFiles">Choose images or PDF files</label>
+          <input id="libraryFiles" type="file"
+            accept="image/*,application/pdf" multiple>
+
+          <p class="muted small-text">
+            Browser storage is limited. Large files may not fit, so keep
+            separate copies of important documents.
+          </p>
+
+          <button type="button" id="imagesToPdfButton" class="secondary-button">
+            Print Images / Save as PDF
+          </button>
+        </div>
+
         <div id="libraryFileList" class="library-grid"></div>
       </section>
 
+      <!-- FLASHCARDS -->
       <section id="flashcardsView" class="view" hidden>
-        <div class="page-heading"><div><p class="eyebrow">ACTIVE RECALL</p><h2>Flashcards &amp; Revision</h2><p class="muted">Create question-and-answer cards for revision.</p></div></div>
-        <div class="panel"><h3>Create Flashcard</h3><form id="flashcardForm"><label for="flashcardQuestion">Question</label><textarea id="flashcardQuestion" rows="3" placeholder="Enter a question…" required></textarea><label for="flashcardAnswer">Answer</label><textarea id="flashcardAnswer" rows="4" placeholder="Enter the answer…" required></textarea><button type="submit" class="primary-button">Add Flashcard</button></form></div>
-        <section class="panel"><div class="section-heading"><h3>Your Flashcards</h3><span id="flashcardCount" class="muted">0 cards</span></div><div id="flashcardList" class="flashcard-list"></div></section>
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">ACTIVE RECALL</p>
+            <h2>Flashcards &amp; Revision</h2>
+            <p class="muted">Create question-and-answer cards for revision.</p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>Create Flashcard</h3>
+          <form id="flashcardForm">
+            <label for="flashcardQuestion">Question</label>
+            <textarea id="flashcardQuestion" rows="3"
+              placeholder="Enter a question…" required></textarea>
+
+            <label for="flashcardAnswer">Answer</label>
+            <textarea id="flashcardAnswer" rows="4"
+              placeholder="Enter the answer…" required></textarea>
+
+            <button type="submit" class="primary-button">Add Flashcard</button>
+          </form>
+        </div>
+
+        <section class="panel">
+          <div class="section-heading">
+            <h3>Your Flashcards</h3>
+            <span id="flashcardCount" class="muted">0 cards</span>
+          </div>
+          <div id="flashcardList" class="flashcard-list"></div>
+        </section>
       </section>
 
-      <section id="placeholderView" class="view" hidden><div class="panel"><h2 id="placeholderTitle">Coming Soon</h2><p id="placeholderDescription" class="muted">This section is not available yet.</p></div></section>
-      <footer class="app-footer"><p>DEVELOPER MASTERMIND</p><p class="muted">Study smarter. Keep learning.</p></footer>
+      <!-- FALLBACK -->
+      <section id="placeholderView" class="view" hidden>
+        <div class="panel">
+          <h2 id="placeholderTitle">Coming Soon</h2>
+          <p id="placeholderDescription" class="muted">
+            This section is not available yet.
+          </p>
+        </div>
+      </section>
+
+      <footer class="app-footer">
+        <p>DEVELOPER MASTERMIND</p>
+        <p class="muted">Study smarter. Keep learning.</p>
+      </footer>
     </main>
   </div>
 </body>
