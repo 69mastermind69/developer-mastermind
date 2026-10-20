@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -26,25 +27,25 @@
       <div class="sidebar-label">WORKSPACE</div>
 
       <nav class="navigation" aria-label="Main navigation">
-        <button class="nav-item active" data-view="home">
+        <button type="button" class="nav-item active" data-view="home">
           <span>⌂</span> Dashboard
         </button>
-        <button class="nav-item" data-view="notes">
+        <button type="button" class="nav-item" data-view="notes">
           <span>▤</span> My Notes
         </button>
-        <button class="nav-item" data-view="planner">
+        <button type="button" class="nav-item" data-view="planner">
           <span>◷</span> Study Planner
           <span class="soon-tag">Soon</span>
         </button>
-        <button class="nav-item" data-view="focus">
+        <button type="button" class="nav-item" data-view="focus">
           <span>◉</span> Focus Timer
           <span class="soon-tag">Soon</span>
         </button>
-        <button class="nav-item" data-view="library">
-          <span>▧</span> Photo & PDF
+        <button type="button" class="nav-item" data-view="library">
+          <span>▧</span> Photo &amp; PDF
           <span class="soon-tag">Soon</span>
         </button>
-        <button class="nav-item" data-view="flashcards">
+        <button type="button" class="nav-item" data-view="flashcards">
           <span>▱</span> Flashcards
           <span class="soon-tag">Soon</span>
         </button>
@@ -62,8 +63,8 @@
 
     <main class="main-content">
       <header class="topbar">
-        <button class="icon-button mobile-menu" id="menuButton"
-          aria-label="Open navigation">☰</button>
+        <button type="button" class="icon-button mobile-menu"
+          id="menuButton" aria-label="Open navigation">☰</button>
 
         <div class="breadcrumb">
           <span>Workspace</span>
@@ -77,14 +78,15 @@
             <span id="connectionText">Local workspace</span>
           </span>
 
-          <button class="icon-button" id="themeButton"
+          <button type="button" class="icon-button" id="themeButton"
             aria-label="Change theme" title="Change theme">◐</button>
 
-          <button class="avatar" id="installButton"
+          <button type="button" class="avatar" id="installButton"
             title="Install app" aria-label="Install app">DM</button>
         </div>
       </header>
 
+      <!-- DASHBOARD -->
       <section class="page" id="dashboardView">
         <div class="welcome-row">
           <div>
@@ -92,7 +94,7 @@
             <h1>Make today <span class="gradient-text">count.</span></h1>
             <p class="subtitle">Your ideas, notes and study goals — all in one place.</p>
           </div>
-          <button class="primary-button" id="newNoteButton">
+          <button type="button" class="primary-button" id="newNoteButton">
             <span>＋</span> New note
           </button>
         </div>
@@ -102,10 +104,11 @@
             <div class="hero-pill"><span></span> YOUR WORKSPACE, YOUR RULES</div>
             <h2>Think clearly.<br>Study smarter.</h2>
             <p>Capture what you learn. Build a revision habit. Keep your knowledge close, even offline.</p>
-            <button class="hero-button" id="heroNoteButton">
+            <button type="button" class="hero-button" id="heroNoteButton">
               Create your first note <span>→</span>
             </button>
           </div>
+
           <div class="hero-art" aria-hidden="true">
             <div class="art-orbit orbit-one"></div>
             <div class="art-orbit orbit-two"></div>
@@ -172,7 +175,9 @@
               <h2>Recent notes</h2>
               <p class="section-subtitle">Your latest ideas, ready when you are.</p>
             </div>
-            <button class="text-button" id="viewAllNotes">View all →</button>
+            <button type="button" class="text-button" id="viewAllNotes">
+              View all →
+            </button>
           </div>
 
           <div class="search-wrap">
@@ -187,6 +192,7 @@
         </div>
       </section>
 
+      <!-- ALL NOTES, TRASH, FAVORITES AND BACKUP -->
       <section class="page hidden" id="notesView">
         <div class="page-heading">
           <div>
@@ -194,20 +200,30 @@
             <h1>My <span class="gradient-text">Notes.</span></h1>
             <p class="subtitle">Write it down. Find it when you need it.</p>
           </div>
-          <button class="primary-button" id="notesNewButton">＋ New note</button>
+          <button type="button" class="primary-button" id="notesNewButton">
+            ＋ New note
+          </button>
         </div>
+
         <div class="search-wrap notes-page-search">
           <span class="search-icon">⌕</span>
           <input id="notesSearchInput" type="search"
             placeholder="Search by title or note content..."
-            aria-label="Search all notes">
+            aria-label="Search all notes" autocomplete="off">
         </div>
+
+        <!-- JavaScript adds Trash, Favorites and Backup controls here. -->
+        <div id="notesToolbarHost"></div>
+
         <div class="notes-grid" id="allNotesGrid" aria-live="polite"></div>
       </section>
 
+      <!-- NOTE EDITOR -->
       <section class="page hidden" id="editorView">
         <div class="editor-heading">
-          <button class="text-button" id="backToNotes">← Back to notes</button>
+          <button type="button" class="text-button" id="backToNotes">
+            ← Back to notes
+          </button>
           <span class="save-indicator" id="saveStatus">Not saved yet</span>
         </div>
 
@@ -231,13 +247,18 @@
           <div class="editor-footer">
             <span>Changes are saved to this device.</span>
             <div class="editor-actions">
-              <button class="secondary-button" id="deleteNoteButton">Move to trash</button>
-              <button class="primary-button" id="saveNoteButton">Save note</button>
+              <button type="button" class="secondary-button" id="deleteNoteButton">
+                Move to trash
+              </button>
+              <button type="button" class="primary-button" id="saveNoteButton">
+                Save note
+              </button>
             </div>
           </div>
         </div>
       </section>
 
+      <!-- PLACEHOLDER PAGES -->
       <section class="page hidden" id="placeholderView">
         <div class="placeholder-card">
           <div class="placeholder-icon" id="placeholderIcon">✦</div>
@@ -246,7 +267,7 @@
           <p id="placeholderDescription">
             This section will be added in a later implementation phase.
           </p>
-          <button class="primary-button" id="placeholderNotesButton">
+          <button type="button" class="primary-button" id="placeholderNotesButton">
             Go to My Notes →
           </button>
         </div>
