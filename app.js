@@ -1,1435 +1,1690 @@
 
+/* =========================================
+   DEVELOPER MASTERMIND
+   File: app.js
+   Notes + Study Planner + Focus Timer
+   + Photo/PDF Library + Flashcards
+========================================= */
+
 "use strict";
 
-/* =========================================================
-   DEVELOPER MASTERMIND
-   Notes • Folders • Tags • Favorites • Trash • Backup
-   ========================================================= */
+/* ---------- Configuration ---------- */
 
 const DB_NAME = "developer_mastermind_db";
 const DB_VERSION = 2;
-const STORE_NAME = "notes";
+const NOTES_STORE = "notes";
 
-let db = null;
-let currentNoteId = null;
-let currentView = "home";
-let deferredInstallPrompt = null;
-let toastTimer = null;
-let autosaveTimer = null;
-let currentFilter = "all";
-let currentFolder = "";
-let editorControlsReady = false;
-let saveQueue = Promise.resolve();
-
-const $ = (selector) => document.querySelector(selector);
-
-const elements = {
-  dashboard: $("#dashboardView"),
-  notes: $("#notesView"),
-  editor: $("#editorView"),
-  placeholder: $("#placeholderView"),
-  breadcrumb: $("#breadcrumbCurrent"),
-  notesGrid: $("#notesGrid"),
-  allNotesGrid: $("#allNotesGrid"),
-  totalNotes: $("#totalNotes"),
-  search: $("#searchInput"),
-  notesSearch: $("#notesSearchInput"),
-  title: $("#noteTitle"),
-  content: $("#noteContent"),
-  saveStatus: $("#saveStatus"),
-  editorDate: $("#editorDate"),
-  toast: $("#toast"),
-  sidebar: $("#sidebar")
+const STORAGE_KEYS = {
+  planner: "dm_planner_tasks_v1",
+  flashcards: "dm_flashcards_v1",
+  theme: "dm_theme",
+  focusHistory: "dm_focus_history_v1",
+  library: "dm_library_files_v1"
 };
 
-const placeholderPages = {
-  planner: {
-    title: "Study Planner",
-    icon: "◷",
-    description: "Plan study sessions, organise deadlines and manage reminders."
-  },
-  focus: {
-    title: "Focus Timer",
-    icon: "◉",
-    description: "A Pomodoro timer and study history are planned for a future update."
-  },
-  library: {
-    title: "Photo & PDF Library",
-    icon: "▧",
-    description: "Photo storage, PDF tools and OCR are planned for a future update."
-  },
-  flashcards: {
-    title: "Flashcards & Revision",
-    icon: "▱",
-    description: "Create revision cards and track learning progress in a future update."
-  }
-};
+const $ = (selector, root = document) => root.querySelector(selector);
+const $$ = (selector, root = document) =>
+  Array.from(root.querySelectorAll(selector));
 
-/* -------------------- Utilities -------------------- */
+const makeId = () =>
+  window.crypto && typeof window.crypto.randomUUID === "function"
+    ? window.crypto.randomUUID()
+    : `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
-function makeId() {
-  if (window.crypto && typeof window.crypto.randomUUID === "function") {
-    return window.crypto.randomUUID();
-  }
-
-  return Date.now().toString(36) + Math.random().toString(36).slice(2);
-}
-
-function escapeHTML(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (character) => ({
+const escapeHTML = (value = "") =>
+  String(value).replace(/[&<>"']/g, character => ({
     "&": "&amp;",
     "<": "&lt;",
     ">": "&gt;",
     '"': "&quot;",
     "'": "&#39;"
   })[character]);
-}
 
-function formatDate(value) {
-  if (!value) return "Just now";
-
+const safeDate = value => {
+  if (!value) return "";
   const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString();
+};
 
-  if (Number.isNaN(date.getTime())) return "Recently";
+const readJSON = (key, fallback = []) => {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || "null");
+    return value ?? fallback;
+  } catch (error) {
+    console.warn(`Could not read ${key}:`, error);
+    return fallback;
+  }
+};
 
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric"
-  }).format(date);
-}
+const writeJSON = (key, value) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch (error) {
+    console.error(`Could not save ${key}:`, error);
+    showToast(
+      "Storage full or unavailable. Please remove some files or export a backup.",
+      "error"
+    );
+    return false;
+  }
+};
 
-function showToast(message) {
-  if (!elements.toast) {
-    console.log(message);
-    return;
+let notesDB = null;
+let currentNoteId = null;
+let currentNoteFolder = "all";
+let currentNoteFilter = "all";
+let currentSearch = "";
+let currentFocusMinutes = 25;
+let focusRemainingSeconds = 25 * 60;
+let focusInterval = null;
+let focusRunning = false;
+let focusStartedAt = null;
+let focusTaskName = "";
+
+/* ---------- Toast Messages ---------- */
+
+function showToast(message, type = "success") {
+  let toast = $("#toast") || $(".toast") || $("#toastMessage");
+
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "dmGeneratedToast";
+    toast.className = "toast";
+    toast.setAttribute("role", "status");
+    toast.setAttribute("aria-live", "polite");
+    document.body.appendChild(toast);
   }
 
-  elements.toast.textContent = message;
-  elements.toast.classList.add("show");
+  toast.textContent = message;
+  toast.classList.remove("success", "error");
+  toast.classList.add(type === "error" ? "error" : "success");
+  toast.hidden = false;
 
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    elements.toast.classList.remove("show");
+  clearTimeout(showToast.timeout);
+  showToast.timeout = setTimeout(() => {
+    if (toast.id === "dmGeneratedToast") {
+      toast.remove();
+    } else {
+      toast.hidden = true;
+    }
   }, 3000);
 }
 
-function setSaveStatus(message, saved = false) {
-  if (!elements.saveStatus) return;
+/* =========================================
+   THEME
+========================================= */
 
-  elements.saveStatus.textContent = message;
-  elements.saveStatus.classList.toggle("saved", saved);
+function setupTheme() {
+  const savedTheme = localStorage.getItem(STORAGE_KEYS.theme) || "light";
+
+  document.documentElement.dataset.theme = savedTheme;
+
+  const themeButtons = [
+    $("#themeToggle"),
+    $("#themeButton"),
+    $("#toggleTheme"),
+    ...$$("[data-action='toggle-theme']")
+  ].filter(Boolean);
+
+  themeButtons.forEach(button => {
+    button.addEventListener("click", toggleTheme);
+    updateThemeButton(button);
+  });
 }
 
-function normaliseNote(note) {
-  return {
-    ...note,
-    id: String(note.id),
-    title: typeof note.title === "string" && note.title.trim()
-      ? note.title
-      : "Untitled note",
-    content: typeof note.content === "string" ? note.content : "",
-    folder: typeof note.folder === "string" ? note.folder : "",
-    tags: Array.isArray(note.tags)
-      ? [...new Set(note.tags.map(String).map((tag) => tag.trim()).filter(Boolean))]
-      : [],
-    favorite: note.favorite === true,
-    deletedAt: note.deletedAt || null,
-    createdAt: note.createdAt || new Date().toISOString(),
-    updatedAt: note.updatedAt || new Date().toISOString()
-  };
+function updateThemeButton(button) {
+  if (!button) return;
+
+  const dark = document.documentElement.dataset.theme === "dark";
+  button.setAttribute("aria-pressed", String(dark));
+  button.setAttribute("aria-label", dark ? "Switch to light theme" : "Switch to dark theme");
+
+  if (button.dataset.iconOnly === "true") {
+    button.textContent = dark ? "☀️" : "🌙";
+  }
 }
 
-/* -------------------- IndexedDB -------------------- */
+function toggleTheme() {
+  const current =
+    document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+  const next = current === "dark" ? "light" : "dark";
+
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem(STORAGE_KEYS.theme, next);
+
+  [
+    $("#themeToggle"),
+    $("#themeButton"),
+    $("#toggleTheme"),
+    ...$$("[data-action='toggle-theme']")
+  ].filter(Boolean).forEach(updateThemeButton);
+}
+
+/* =========================================
+   NOTES DATABASE
+   Keeps the existing database version 2.
+========================================= */
 
 function openDatabase() {
   return new Promise((resolve, reject) => {
     if (!("indexedDB" in window)) {
-      reject(new Error("IndexedDB is not supported in this browser."));
+      reject(new Error("This browser does not support IndexedDB."));
       return;
     }
 
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-    request.onupgradeneeded = (event) => {
-      const database = event.target.result;
+    request.onupgradeneeded = event => {
+      const db = event.target.result;
 
-      // Preserve the existing notes store and all stored data.
-      if (!database.objectStoreNames.contains(STORE_NAME)) {
-        const store = database.createObjectStore(STORE_NAME, {
-          keyPath: "id"
-        });
-
-        store.createIndex("updatedAt", "updatedAt", {
-          unique: false
-        });
+      if (!db.objectStoreNames.contains(NOTES_STORE)) {
+        db.createObjectStore(NOTES_STORE, { keyPath: "id" });
       }
     };
 
-    request.onsuccess = () => {
-      db = request.result;
-      db.onversionchange = () => db.close();
-      resolve(db);
+    request.onsuccess = event => {
+      notesDB = event.target.result;
+
+      notesDB.onversionchange = () => {
+        notesDB.close();
+      };
+
+      resolve(notesDB);
     };
 
-    request.onerror = () => reject(request.error);
+    request.onerror = () => {
+      reject(request.error || new Error("Could not open Notes database."));
+    };
 
     request.onblocked = () => {
-      console.warn("Database upgrade is blocked by another open tab.");
-      showToast("Close other app tabs, then reload this page.");
+      console.warn("Notes database upgrade is blocked by another open tab.");
     };
   });
 }
 
-function getStore(mode = "readonly") {
-  if (!db) throw new Error("The local database is not ready.");
+function normalizeNote(note = {}) {
+  const now = new Date().toISOString();
 
-  return db.transaction(STORE_NAME, mode).objectStore(STORE_NAME);
+  return {
+    id: note.id || makeId(),
+    title: String(note.title || ""),
+    content: String(note.content || ""),
+    folder: String(note.folder || "General"),
+    tags: Array.isArray(note.tags) ? note.tags : [],
+    favorite: Boolean(note.favorite),
+    deletedAt: note.deletedAt || null,
+    createdAt: note.createdAt || now,
+    updatedAt: note.updatedAt || now
+  };
+}
+
+function notesTransaction(mode, action) {
+  return new Promise((resolve, reject) => {
+    if (!notesDB) {
+      reject(new Error("Notes database is not ready."));
+      return;
+    }
+
+    let transaction;
+
+    try {
+      transaction = notesDB.transaction(NOTES_STORE, mode);
+      const store = transaction.objectStore(NOTES_STORE);
+      action(store, resolve, reject);
+    } catch (error) {
+      reject(error);
+    }
+  });
 }
 
 function getAllNotes() {
-  return new Promise((resolve, reject) => {
-    let request;
-
-    try {
-      request = getStore("readonly").getAll();
-    } catch (error) {
-      reject(error);
-      return;
-    }
-
-    request.onsuccess = () => {
-      resolve((request.result || []).map(normaliseNote));
-    };
-
+  return notesTransaction("readonly", (store, resolve, reject) => {
+    const request = store.getAll();
+    request.onsuccess = () => resolve(request.result || []);
     request.onerror = () => reject(request.error);
   });
 }
 
-function getNote(id) {
-  return new Promise((resolve, reject) => {
-    let request;
+function saveNote(note) {
+  const normalized = normalizeNote(note);
 
-    try {
-      request = getStore("readonly").get(String(id));
-    } catch (error) {
-      reject(error);
-      return;
-    }
-
-    request.onsuccess = () => {
-      resolve(request.result ? normaliseNote(request.result) : null);
-    };
-
+  return notesTransaction("readwrite", (store, resolve, reject) => {
+    const request = store.put(normalized);
+    request.onsuccess = () => resolve(normalized);
     request.onerror = () => reject(request.error);
   });
 }
 
-function putNote(note) {
-  return new Promise((resolve, reject) => {
-    let transaction;
-
-    try {
-      transaction = db.transaction(STORE_NAME, "readwrite");
-      transaction.objectStore(STORE_NAME).put(normaliseNote(note));
-    } catch (error) {
-      reject(error);
-      return;
-    }
-
-    transaction.oncomplete = () => resolve(note);
-    transaction.onerror = () => reject(transaction.error);
-    transaction.onabort = () => reject(transaction.error);
+function deleteNoteFromDB(id) {
+  return notesTransaction("readwrite", (store, resolve, reject) => {
+    const request = store.delete(id);
+    request.onsuccess = () => resolve(true);
+    request.onerror = () => reject(request.error);
   });
 }
 
-function deleteNoteFromDatabase(id) {
-  return new Promise((resolve, reject) => {
-    let transaction;
-
-    try {
-      transaction = db.transaction(STORE_NAME, "readwrite");
-      transaction.objectStore(STORE_NAME).delete(String(id));
-    } catch (error) {
-      reject(error);
-      return;
-    }
-
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error);
-    transaction.onabort = () => reject(transaction.error);
-  });
+async function getNoteById(id) {
+  const notes = await getAllNotes();
+  return notes.find(note => note.id === id) || null;
 }
 
-/* -------------------- Search and filters -------------------- */
+/* ---------- Notes UI ---------- */
 
-function getAllFolders(notes) {
-  return [...new Set(
-    notes
-      .filter((note) => !note.deletedAt)
-      .map((note) => note.folder)
-      .filter(Boolean)
-  )].sort((a, b) => a.localeCompare(b));
+function getNotesGrid() {
+  return $("#notesGrid") ||
+    $("#notesContainer") ||
+    $("#notesList") ||
+    $(".notes-grid") ||
+    $(".note-grid");
 }
 
-function parseTags(value) {
-  return [...new Set(
-    String(value || "")
-      .split(",")
-      .map((tag) => tag.trim())
-      .filter(Boolean)
-      .slice(0, 30)
-  )];
+function getNoteTitleInput() {
+  return $("#noteTitle") || $("#titleInput") || $("#editorTitle");
 }
 
-function noteMatchesSearch(note, term) {
-  if (!term) return true;
-
-  const searchable = [
-    note.title,
-    note.content,
-    note.folder,
-    ...(note.tags || [])
-  ].join(" ").toLocaleLowerCase();
-
-  return searchable.includes(term.toLocaleLowerCase());
+function getNoteContentInput() {
+  return $("#noteContent") || $("#contentInput") || $("#editorContent");
 }
 
-function getVisibleNotes(notes, term = "") {
-  let result = notes.filter((note) => {
-    if (currentFilter === "trash") return Boolean(note.deletedAt);
+function getVisibleNotes() {
+  return getAllNotes().then(notes => {
+    return notes.filter(note => {
+      const searchText =
+        `${note.title} ${note.content} ${(note.tags || []).join(" ")}`
+          .toLowerCase();
 
-    if (note.deletedAt) return false;
+      if (currentNoteFilter === "trash" && !note.deletedAt) return false;
+      if (currentNoteFilter !== "trash" && note.deletedAt) return false;
+      if (currentNoteFilter === "favorites" && !note.favorite) return false;
 
-    if (currentFilter === "favorites" && !note.favorite) return false;
+      if (
+        currentNoteFolder !== "all" &&
+        note.folder !== currentNoteFolder
+      ) {
+        return false;
+      }
 
-    if (currentFilter === "folder" && note.folder !== currentFolder) {
-      return false;
-    }
+      if (currentSearch && !searchText.includes(currentSearch.toLowerCase())) {
+        return false;
+      }
 
-    return true;
-  });
-
-  if (term.trim()) {
-    result = result.filter((note) =>
-      noteMatchesSearch(note, term.trim())
+      return true;
+    }).sort((a, b) =>
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
     );
-  }
-
-  return result.sort((a, b) => {
-    const dateA = new Date(a.updatedAt).getTime() || 0;
-    const dateB = new Date(b.updatedAt).getTime() || 0;
-    return dateB - dateA;
   });
 }
-
-/* -------------------- Note cards -------------------- */
-
-function noteCardHTML(note) {
-  const title = escapeHTML(note.title);
-  const content = escapeHTML(note.content || "No content yet.");
-  const date = escapeHTML(formatDate(note.updatedAt));
-  const folder = escapeHTML(note.folder || "Unfiled");
-
-  const tags = (note.tags || [])
-    .map((tag) => `<span class="dm-tag">${escapeHTML(tag)}</span>`)
-    .join("");
-
-  const colors = ["#8a7cff", "#4c9ce8", "#27b68a", "#e9a34f"];
-  const color = colors[
-    (String(note.id).charCodeAt(0) || 0) % colors.length
-  ];
-
-  const actions = note.deletedAt
-    ? `
-      <div class="dm-card-actions">
-        <button type="button" data-note-action="restore"
-          data-note-id="${escapeHTML(note.id)}">Restore</button>
-        <button type="button" data-note-action="purge"
-          data-note-id="${escapeHTML(note.id)}">Delete forever</button>
-      </div>`
-    : "";
-
-  return `
-    <article class="note-card"
-      style="--note-accent:${color}"
-      data-note-id="${escapeHTML(note.id)}"
-      tabindex="0" role="button"
-      aria-label="Open note: ${title}">
-
-      <div class="note-card-top">
-        <span class="note-type">
-          ${note.favorite ? "★ FAVORITE" : "PERSONAL NOTE"}
-        </span>
-        <span class="note-date">${date}</span>
-      </div>
-
-      <div class="note-title">${title}</div>
-      <div class="note-preview">${content}</div>
-      <div class="dm-folder-label">📁 ${folder}</div>
-      ${tags ? `<div class="dm-tags">${tags}</div>` : ""}
-
-      <div class="note-card-bottom">
-        <span>${note.deletedAt ? "In trash" : "Stored locally"}</span>
-        <span class="note-open">${note.deletedAt ? "Manage →" : "Open →"}</span>
-      </div>
-
-      ${actions}
-    </article>
-  `;
-}
-
-function emptyStateHTML(hasSearch = false) {
-  if (currentFilter === "trash") {
-    return `
-      <div class="empty-state">
-        <div class="empty-state-icon">♲</div>
-        <h3>Your trash is empty</h3>
-        <p>Deleted notes will appear here so you can restore them.</p>
-      </div>`;
-  }
-
-  if (currentFilter === "favorites") {
-    return `
-      <div class="empty-state">
-        <div class="empty-state-icon">★</div>
-        <h3>No favorite notes yet</h3>
-        <p>Open a note and add it to favorites.</p>
-      </div>`;
-  }
-
-  if (hasSearch) {
-    return `
-      <div class="empty-state">
-        <div class="empty-state-icon">⌕</div>
-        <h3>No matching notes</h3>
-        <p>Try another keyword in বাংলা or English.</p>
-      </div>`;
-  }
-
-  return `
-    <div class="empty-state">
-      <div class="empty-state-icon">✦</div>
-      <h3>Your first idea starts here</h3>
-      <p>Create a note to save what you learn. Notes stay on this device.</p>
-      <button type="button" class="primary-button" data-action="new-note">
-        ＋ Create a note
-      </button>
-    </div>`;
-}
-
-/* -------------------- Dynamic styles and interface -------------------- */
-
-function addInterfaceStyles() {
-  if ($("#dmExtraStyles")) return;
-
-  const style = document.createElement("style");
-  style.id = "dmExtraStyles";
-
-  style.textContent = `
-    .dm-toolbar {
-      display:flex; flex-wrap:wrap; align-items:center;
-      gap:9px; margin:14px 0 18px;
-    }
-    .dm-toolbar button, .dm-toolbar select,
-    .dm-editor-field input {
-      min-height:38px; max-width:100%; padding:8px 11px;
-      color:var(--text); background:var(--surface);
-      border:1px solid var(--border); border-radius:10px;
-      font:inherit;
-    }
-    .dm-toolbar button { cursor:pointer; font-weight:700; }
-    .dm-toolbar button.active {
-      color:var(--primary); background:var(--primary-soft);
-      border-color:var(--primary);
-    }
-    .dm-toolbar .dm-spacer { flex:1; }
-    .dm-editor-fields {
-      display:grid; grid-template-columns:repeat(2,minmax(0,1fr));
-      gap:15px; margin-top:20px;
-    }
-    .dm-editor-field { display:flex; flex-direction:column; gap:8px; }
-    .dm-editor-field label {
-      font-size:11px; color:var(--muted); font-weight:800;
-    }
-    .dm-editor-field input { width:100%; }
-    .dm-favorite-toggle { min-height:38px; cursor:pointer; }
-    .dm-tags { display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
-    .dm-tag {
-      display:inline-block; border-radius:6px; padding:4px 7px;
-      color:var(--primary); background:var(--primary-soft);
-      font-size:10px; overflow-wrap:anywhere;
-    }
-    .dm-folder-label { margin-top:9px; color:var(--muted); font-size:10px; }
-    .dm-card-actions {
-      display:flex; flex-wrap:wrap; gap:7px;
-      margin-top:12px; position:relative; z-index:2;
-    }
-    .dm-card-actions button {
-      padding:7px 9px; border:1px solid var(--border);
-      border-radius:8px; background:var(--surface);
-      color:var(--text); cursor:pointer; font-size:11px;
-    }
-    .dm-help { color:var(--muted); font-size:11px; line-height:1.7; }
-    @media(max-width:520px) {
-      .dm-editor-fields { grid-template-columns:1fr; }
-      .dm-toolbar button, .dm-toolbar select { flex:1 1 auto; }
-    }
-  `;
-
-  document.head.appendChild(style);
-}
-
-function setFilter(filter, folder = "") {
-  currentFilter = filter;
-  currentFolder = folder;
-
-  const toolbar = $("#dmToolbar");
-
-  toolbar?.querySelectorAll("[data-filter]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.filter === filter);
-  });
-
-  const folderSelect = $("#dmFolderFilter");
-  if (folderSelect) folderSelect.value = folder;
-
-  if (elements.breadcrumb && currentView === "notes") {
-    elements.breadcrumb.textContent =
-      filter === "trash" ? "Trash" :
-      filter === "favorites" ? "Favorites" :
-      filter === "folder" ? folder :
-      "My Notes";
-  }
-
-  renderNotes();
-}
-
-function setupDynamicInterface() {
-  if (editorControlsReady) return;
-
-  addInterfaceStyles();
-
-  const toolbarHost = $("#notesToolbarHost");
-
-  if (toolbarHost && !$("#dmToolbar")) {
-    const toolbar = document.createElement("div");
-    toolbar.className = "dm-toolbar";
-    toolbar.id = "dmToolbar";
-
-    toolbar.innerHTML = `
-      <button type="button" data-filter="all" class="active">All notes</button>
-      <button type="button" data-filter="favorites">★ Favorites</button>
-      <button type="button" data-filter="trash">♲ Trash</button>
-      <select id="dmFolderFilter" aria-label="Filter by folder">
-        <option value="">All folders</option>
-      </select>
-      <button type="button" id="dmNewFolder">＋ Folder</button>
-      <span class="dm-spacer"></span>
-      <button type="button" id="dmExport">Export backup</button>
-      <button type="button" id="dmImport">Restore backup</button>
-      <button type="button" id="dmEmptyTrash">Empty trash</button>
-      <input type="file" id="dmBackupFile"
-        accept=".json,application/json" hidden>
-    `;
-
-    toolbarHost.appendChild(toolbar);
-
-    toolbar.querySelectorAll("[data-filter]").forEach((button) => {
-      button.addEventListener("click", () => {
-        setFilter(button.dataset.filter);
-      });
-    });
-
-    $("#dmFolderFilter")?.addEventListener("change", (event) => {
-      const folder = event.target.value;
-      setFilter(folder ? "folder" : "all", folder);
-    });
-
-    $("#dmNewFolder")?.addEventListener("click", createFolder);
-    $("#dmExport")?.addEventListener("click", exportBackup);
-    $("#dmEmptyTrash")?.addEventListener("click", emptyTrash);
-
-    $("#dmImport")?.addEventListener("click", () => {
-      $("#dmBackupFile")?.click();
-    });
-
-    $("#dmBackupFile")?.addEventListener("change", async (event) => {
-      const file = event.target.files?.[0];
-
-      if (file) await importBackup(file);
-
-      // Allow choosing the same file again.
-      event.target.value = "";
-    });
-  }
-
-  const editorPanel = elements.editor?.querySelector(".editor-panel");
-
-  if (editorPanel && !$("#dmEditorFields")) {
-    const fields = document.createElement("div");
-    fields.className = "dm-editor-fields";
-    fields.id = "dmEditorFields";
-
-    fields.innerHTML = `
-      <div class="dm-editor-field">
-        <label for="dmNoteFolder">FOLDER</label>
-        <input id="dmNoteFolder" type="text" maxlength="80"
-          list="dmFolderSuggestions" placeholder="e.g. Biology">
-        <datalist id="dmFolderSuggestions"></datalist>
-      </div>
-
-      <div class="dm-editor-field">
-        <label for="dmNoteTags">TAGS</label>
-        <input id="dmNoteTags" type="text" maxlength="500"
-          placeholder="exam, biology, chapter 1">
-      </div>
-
-      <div class="dm-editor-field">
-        <label>FAVORITE</label>
-        <button type="button" id="dmFavoriteToggle"
-          class="secondary-button dm-favorite-toggle">
-          ☆ Add to favorites
-        </button>
-      </div>
-
-      <div class="dm-editor-field">
-        <label>NOTE MANAGEMENT</label>
-        <p class="dm-help">
-          Use folders to organise notes and commas to separate tags.
-          Changes are saved with the note.
-        </p>
-      </div>
-    `;
-
-    editorPanel.appendChild(fields);
-
-    $("#dmNoteFolder")?.addEventListener("input", scheduleAutosave);
-    $("#dmNoteTags")?.addEventListener("input", scheduleAutosave);
-
-    $("#dmFavoriteToggle")?.addEventListener("click", toggleCurrentFavorite);
-  }
-
-  editorControlsReady = true;
-}
-
-function updateFavoriteButton(favorite) {
-  const button = $("#dmFavoriteToggle");
-  if (!button) return;
-
-  button.textContent = favorite
-    ? "★ Remove from favorites"
-    : "☆ Add to favorites";
-
-  button.classList.toggle("active", favorite);
-}
-
-async function refreshFolderOptions() {
-  const select = $("#dmFolderFilter");
-  const suggestions = $("#dmFolderSuggestions");
-
-  const notes = await getAllNotes();
-  const folders = getAllFolders(notes);
-
-  if (select) {
-    select.innerHTML = `
-      <option value="">All folders</option>
-      ${folders.map((folder) =>
-        `<option value="${escapeHTML(folder)}">${escapeHTML(folder)}</option>`
-      ).join("")}`;
-
-    select.value = folders.includes(currentFolder) ? currentFolder : "";
-
-    if (!select.value && currentFilter === "folder") {
-      currentFilter = "all";
-      currentFolder = "";
-    }
-  }
-
-  if (suggestions) {
-    suggestions.innerHTML = folders.map((folder) =>
-      `<option value="${escapeHTML(folder)}"></option>`
-    ).join("");
-  }
-}
-
-async function createFolder() {
-  const answer = window.prompt("Enter a folder name:");
-  if (answer === null) return;
-
-  const name = answer.trim();
-
-  if (!name) {
-    showToast("Folder name cannot be empty.");
-    return;
-  }
-
-  if (name.length > 80) {
-    showToast("Folder name is too long.");
-    return;
-  }
-
-  const notes = await getAllNotes();
-
-  if (getAllFolders(notes).some(
-    (folder) => folder.toLocaleLowerCase() === name.toLocaleLowerCase()
-  )) {
-    showToast("That folder already exists.");
-    return;
-  }
-
-  const now = new Date().toISOString();
-
-  await putNote({
-    id: makeId(),
-    title: name,
-    content: "",
-    folder: name,
-    tags: [],
-    favorite: false,
-    deletedAt: null,
-    createdAt: now,
-    updatedAt: now,
-    isFolderPlaceholder: true
-  });
-
-  setFilter("folder", name);
-  await renderNotes();
-  showToast("Folder created. Create a note and select this folder.");
-}
-
-/* -------------------- Render notes -------------------- */
 
 async function renderNotes() {
-  if (!db) return;
+  const grid = getNotesGrid();
+  if (!grid) return;
 
+  try {
+    const notes = await getVisibleNotes();
+
+    if (!notes.length) {
+      grid.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">📝</div>
+          <h3>No notes found</h3>
+          <p>Create a new note or change your filters.</p>
+        </div>
+      `;
+      updateNotesStats();
+      return;
+    }
+
+    grid.innerHTML = notes.map(note => {
+      const title = note.title.trim() || "Untitled note";
+      const content = note.content.trim() || "No content yet.";
+      const tags = (note.tags || [])
+        .map(tag => `<span class="note-tag">${escapeHTML(tag)}</span>`)
+        .join("");
+
+      return `
+        <article class="note-card" data-note-id="${escapeHTML(note.id)}">
+          <div class="note-card-header">
+            <h3>${escapeHTML(title)}</h3>
+            <button
+              class="icon-button"
+              type="button"
+              data-note-action="favorite"
+              data-id="${escapeHTML(note.id)}"
+              aria-label="${note.favorite ? "Remove from favorites" : "Add to favorites"}"
+              title="${note.favorite ? "Unfavorite" : "Favorite"}"
+            >${note.favorite ? "★" : "☆"}</button>
+          </div>
+
+          <p>${escapeHTML(content.slice(0, 260))}${content.length > 260 ? "…" : ""}</p>
+
+          <div class="note-tags">${tags}</div>
+
+          <div class="note-card-footer">
+            <span>${escapeHTML(note.folder || "General")}</span>
+            <span>${escapeHTML(safeDate(note.updatedAt))}</span>
+          </div>
+
+          <div class="note-card-actions">
+            ${
+              note.deletedAt
+                ? `
+                  <button type="button" data-note-action="restore" data-id="${escapeHTML(note.id)}">Restore</button>
+                  <button type="button" data-note-action="purge" data-id="${escapeHTML(note.id)}">Delete forever</button>
+                `
+                : `
+                  <button type="button" data-note-action="edit" data-id="${escapeHTML(note.id)}">Edit</button>
+                  <button type="button" data-note-action="trash" data-id="${escapeHTML(note.id)}">Move to trash</button>
+                `
+            }
+          </div>
+        </article>
+      `;
+    }).join("");
+
+    updateNotesStats();
+  } catch (error) {
+    console.error(error);
+    showToast("Could not load notes.", "error");
+  }
+}
+
+async function updateNotesStats() {
   try {
     const notes = await getAllNotes();
+    const active = notes.filter(note => !note.deletedAt);
+    const favorites = active.filter(note => note.favorite);
+    const trash = notes.filter(note => note.deletedAt);
 
-    const activeNotes = notes.filter((note) => !note.deletedAt);
-    const dashboardNotes = activeNotes
-      .filter((note) => !note.isFolderPlaceholder)
-      .sort((a, b) =>
-        (new Date(b.updatedAt).getTime() || 0) -
-        (new Date(a.updatedAt).getTime() || 0)
-      );
-
-    if (elements.totalNotes) {
-      elements.totalNotes.textContent = String(dashboardNotes.length);
-    }
-
-    const dashboardTerm = elements.search?.value.trim() || "";
-    const dashboardResults = dashboardNotes
-      .filter((note) => noteMatchesSearch(note, dashboardTerm))
-      .slice(0, 6);
-
-    if (elements.notesGrid) {
-      elements.notesGrid.innerHTML = dashboardResults.length
-        ? dashboardResults.map(noteCardHTML).join("")
-        : emptyStateHTML(Boolean(dashboardTerm));
-    }
-
-    const notesTerm = elements.notesSearch?.value.trim() || "";
-    const results = getVisibleNotes(notes, notesTerm)
-      .filter((note) => !note.isFolderPlaceholder || Boolean(note.deletedAt));
-
-    if (elements.allNotesGrid) {
-      elements.allNotesGrid.innerHTML = results.length
-        ? results.map(noteCardHTML).join("")
-        : emptyStateHTML(Boolean(notesTerm));
-    }
-
-    await refreshFolderOptions();
+    setText("#notesCount", active.length);
+    setText("#totalNotes", active.length);
+    setText("#favoriteNotesCount", favorites.length);
+    setText("#trashNotesCount", trash.length);
+    setText("#dashboardNotesCount", active.length);
   } catch (error) {
-    console.error("Could not load notes:", error);
-    showToast("Could not load notes. Please reload the app.");
+    console.warn("Notes statistics unavailable:", error);
   }
 }
 
-/* -------------------- Views -------------------- */
-
-function showView(view) {
-  currentView = view;
-
-  elements.dashboard?.classList.toggle("hidden", view !== "home");
-  elements.notes?.classList.toggle("hidden", view !== "notes");
-  elements.editor?.classList.toggle("hidden", view !== "editor");
-
-  elements.placeholder?.classList.toggle(
-    "hidden",
-    !Object.prototype.hasOwnProperty.call(placeholderPages, view)
-  );
-
-  document.querySelectorAll(".nav-item").forEach((button) => {
-    button.classList.toggle("active", button.dataset.view === view);
-  });
-
-  const title = view === "notes"
-    ? currentFilter === "trash" ? "Trash"
-      : currentFilter === "favorites" ? "Favorites"
-      : currentFilter === "folder" ? currentFolder
-      : "My Notes"
-    : view === "home" ? "Dashboard"
-    : view === "editor" ? "Note Editor"
-    : placeholderPages[view]?.title || "Dashboard";
-
-  if (elements.breadcrumb) elements.breadcrumb.textContent = title;
-
-  elements.sidebar?.classList.remove("open");
-
-  if (view === "notes" || view === "home") renderNotes();
-
-  if (placeholderPages[view]) {
-    const page = placeholderPages[view];
-
-    const placeholderTitle = $("#placeholderTitle");
-    const placeholderIcon = $("#placeholderIcon");
-    const placeholderDescription = $("#placeholderDescription");
-
-    if (placeholderTitle) placeholderTitle.textContent = page.title;
-    if (placeholderIcon) placeholderIcon.textContent = page.icon;
-    if (placeholderDescription) {
-      placeholderDescription.textContent = page.description;
-    }
-  }
-
-  window.scrollTo({ top: 0, behavior: "smooth" });
+function setText(selector, value) {
+  const element = $(selector);
+  if (element) element.textContent = String(value);
 }
 
-/* -------------------- Create and open notes -------------------- */
+function showEditor() {
+  showView("editor");
+
+  const editor = $("#editorView") || $(".editor-view");
+  if (editor) editor.hidden = false;
+}
 
 async function createNewNote() {
-  clearTimeout(autosaveTimer);
-
   currentNoteId = null;
 
-  if (elements.title) elements.title.value = "";
-  if (elements.content) elements.content.value = "";
-  if (elements.editorDate) elements.editorDate.textContent = "New note";
+  const titleInput = getNoteTitleInput();
+  const contentInput = getNoteContentInput();
 
-  if ($("#dmNoteFolder")) $("#dmNoteFolder").value = currentFolder || "";
-  if ($("#dmNoteTags")) $("#dmNoteTags").value = "";
+  if (titleInput) titleInput.value = "";
+  if (contentInput) contentInput.value = "";
 
-  updateFavoriteButton(false);
-  setSaveStatus("Not saved yet");
+  const folderInput = $("#noteFolder") || $("#folderInput");
+  const tagsInput = $("#noteTags") || $("#tagsInput");
 
-  showView("editor");
-  elements.title?.focus();
+  if (folderInput) folderInput.value = "General";
+  if (tagsInput) tagsInput.value = "";
+
+  const editorHeading = $("#editorHeading") || $("#editorTitleLabel");
+  if (editorHeading) editorHeading.textContent = "New Note";
+
+  showEditor();
+  if (titleInput) titleInput.focus();
 }
 
-async function openNote(id) {
-  try {
-    const note = await getNote(id);
-
-    if (!note) {
-      showToast("This note could not be found.");
-      await renderNotes();
-      return;
-    }
-
-    if (note.deletedAt) {
-      showToast("Restore this note before editing it.");
-      return;
-    }
-
-    clearTimeout(autosaveTimer);
-    currentNoteId = note.id;
-
-    if (elements.title) elements.title.value = note.title || "";
-    if (elements.content) elements.content.value = note.content || "";
-
-    if (elements.editorDate) {
-      elements.editorDate.textContent = "Last edited " + formatDate(note.updatedAt);
-    }
-
-    if ($("#dmNoteFolder")) $("#dmNoteFolder").value = note.folder || "";
-    if ($("#dmNoteTags")) $("#dmNoteTags").value = (note.tags || []).join(", ");
-
-    updateFavoriteButton(note.favorite);
-    setSaveStatus("Saved on this device", true);
-    showView("editor");
-  } catch (error) {
-    console.error("Could not open note:", error);
-    showToast("Could not open this note.");
-  }
-}
-
-/* -------------------- Save and autosave -------------------- */
-
-function scheduleAutosave() {
-  setSaveStatus("Unsaved changes");
-
-  clearTimeout(autosaveTimer);
-  autosaveTimer = setTimeout(() => {
-    saveCurrentNote(false);
-  }, 700);
-}
-
-function saveCurrentNote(showMessage = true) {
-  // Queue saves so two rapid clicks/autosaves do not overwrite each other.
-  const operation = async () => {
-    const title = elements.title?.value.trim() || "";
-    const content = elements.content?.value || "";
-    const folder = ($("#dmNoteFolder")?.value || "").trim().slice(0, 80);
-    const tags = parseTags($("#dmNoteTags")?.value || "");
-
-    if (!title && !content.trim()) {
-      if (currentNoteId) {
-        const existing = await getNote(currentNoteId);
-
-        if (existing) {
-          existing.folder = folder;
-          existing.tags = tags;
-          existing.updatedAt = new Date().toISOString();
-          await putNote(existing);
-          await renderNotes();
-        }
-      }
-
-      setSaveStatus("Nothing to save");
-      return;
-    }
-
-    setSaveStatus("Saving…");
-
-    try {
-      const original = currentNoteId
-        ? await getNote(currentNoteId)
-        : null;
-
-      const now = new Date().toISOString();
-
-      const note = normaliseNote({
-        ...(original || {}),
-        id: currentNoteId || makeId(),
-        title: title || "Untitled note",
-        content,
-        folder,
-        tags,
-        favorite: original?.favorite === true,
-        deletedAt: null,
-        createdAt: original?.createdAt || now,
-        updatedAt: now
-      });
-
-      await putNote(note);
-
-      currentNoteId = note.id;
-
-      if (elements.editorDate) {
-        elements.editorDate.textContent = "Last edited " + formatDate(now);
-      }
-
-      updateFavoriteButton(note.favorite);
-      setSaveStatus("Saved on this device", true);
-
-      await renderNotes();
-
-      if (showMessage) showToast("Note saved on this device.");
-    } catch (error) {
-      console.error("Save failed:", error);
-      setSaveStatus("Save failed");
-      showToast("Could not save. Check available device storage.");
-    }
-  };
-
-  saveQueue = saveQueue.then(operation, operation);
-  return saveQueue;
-}
-
-async function toggleCurrentFavorite() {
-  try {
-    if (!currentNoteId) {
-      await saveCurrentNote(false);
-
-      if (!currentNoteId) {
-        showToast("Write a title or some content first.");
-        return;
-      }
-    }
-
-    const note = await getNote(currentNoteId);
-    if (!note) return;
-
-    note.favorite = !note.favorite;
-    note.updatedAt = new Date().toISOString();
-
-    await putNote(note);
-    updateFavoriteButton(note.favorite);
-    await renderNotes();
-
-    showToast(note.favorite
-      ? "Added to favorites."
-      : "Removed from favorites.");
-  } catch (error) {
-    console.error("Could not update favorite:", error);
-    showToast("Could not update favorite.");
-  }
-}
-
-/* -------------------- Trash, restore and permanent delete -------------------- */
-
-async function deleteCurrentNote() {
-  if (!currentNoteId) {
-    showView("notes");
+async function editNote(id) {
+  const note = await getNoteById(id);
+  if (!note) {
+    showToast("Note not found.", "error");
     return;
   }
 
-  const confirmed = window.confirm(
-    "Move this note to Trash? You can restore it later."
-  );
+  currentNoteId = note.id;
 
-  if (!confirmed) return;
+  const titleInput = getNoteTitleInput();
+  const contentInput = getNoteContentInput();
+  const folderInput = $("#noteFolder") || $("#folderInput");
+  const tagsInput = $("#noteTags") || $("#tagsInput");
 
-  try {
-    const note = await getNote(currentNoteId);
+  if (titleInput) titleInput.value = note.title;
+  if (contentInput) contentInput.value = note.content;
+  if (folderInput) folderInput.value = note.folder;
+  if (tagsInput) tagsInput.value = (note.tags || []).join(", ");
 
-    if (!note) {
-      showToast("This note could not be found.");
-      return;
-    }
+  const editorHeading = $("#editorHeading") || $("#editorTitleLabel");
+  if (editorHeading) editorHeading.textContent = "Edit Note";
 
-    note.deletedAt = new Date().toISOString();
-    note.updatedAt = new Date().toISOString();
+  showEditor();
+}
 
-    await putNote(note);
+async function saveCurrentNote() {
+  const titleInput = getNoteTitleInput();
+  const contentInput = getNoteContentInput();
 
-    clearTimeout(autosaveTimer);
-    currentNoteId = null;
-
-    setFilter("all");
-    showView("notes");
-
-    await renderNotes();
-    showToast("Note moved to Trash. You can restore it.");
-  } catch (error) {
-    console.error("Could not move note to Trash:", error);
-    showToast("Could not move this note to Trash.");
+  if (!titleInput || !contentInput) {
+    showToast("Note editor fields were not found.", "error");
+    return;
   }
+
+  const oldNote = currentNoteId
+    ? await getNoteById(currentNoteId)
+    : null;
+
+  const now = new Date().toISOString();
+  const tagsInput = $("#noteTags") || $("#tagsInput");
+  const folderInput = $("#noteFolder") || $("#folderInput");
+
+  const tags = tagsInput
+    ? tagsInput.value.split(",").map(tag => tag.trim()).filter(Boolean)
+    : [];
+
+  const note = normalizeNote({
+    ...(oldNote || {}),
+    id: currentNoteId || makeId(),
+    title: titleInput.value.trim(),
+    content: contentInput.value,
+    folder: folderInput?.value.trim() || "General",
+    tags,
+    favorite: oldNote?.favorite || false,
+    deletedAt: null,
+    createdAt: oldNote?.createdAt || now,
+    updatedAt: now
+  });
+
+  await saveNote(note);
+  currentNoteId = note.id;
+
+  showToast("Note saved.");
+  showView("notes");
+  await renderNotes();
+}
+
+async function trashNote(id) {
+  const note = await getNoteById(id);
+  if (!note) return;
+
+  note.deletedAt = new Date().toISOString();
+  note.updatedAt = new Date().toISOString();
+
+  await saveNote(note);
+  showToast("Note moved to trash.");
+  await renderNotes();
 }
 
 async function restoreNote(id) {
-  try {
-    const note = await getNote(id);
+  const note = await getNoteById(id);
+  if (!note) return;
 
-    if (!note || !note.deletedAt) {
-      showToast("This note is not in Trash.");
-      await renderNotes();
-      return;
-    }
+  note.deletedAt = null;
+  note.updatedAt = new Date().toISOString();
 
-    note.deletedAt = null;
-    note.updatedAt = new Date().toISOString();
-
-    await putNote(note);
-    await renderNotes();
-
-    showToast("Note restored successfully.");
-  } catch (error) {
-    console.error("Restore failed:", error);
-    showToast("Could not restore the note.");
-  }
+  await saveNote(note);
+  showToast("Note restored.");
+  await renderNotes();
 }
 
 async function permanentlyDeleteNote(id) {
   const confirmed = window.confirm(
     "Permanently delete this note? This cannot be undone."
   );
-
   if (!confirmed) return;
 
-  try {
-    const note = await getNote(id);
-
-    if (!note || !note.deletedAt) {
-      showToast("Only notes in Trash can be permanently deleted here.");
-      return;
-    }
-
-    await deleteNoteFromDatabase(id);
-    await renderNotes();
-
-    showToast("Note permanently deleted.");
-  } catch (error) {
-    console.error("Permanent delete failed:", error);
-    showToast("Could not permanently delete the note.");
-  }
+  await deleteNoteFromDB(id);
+  showToast("Note permanently deleted.");
+  await renderNotes();
 }
 
-async function emptyTrash() {
-  try {
-    const notes = await getAllNotes();
-    const deleted = notes.filter((note) => Boolean(note.deletedAt));
+async function toggleNoteFavorite(id) {
+  const note = await getNoteById(id);
+  if (!note) return;
 
-    if (!deleted.length) {
-      showToast("Trash is already empty.");
-      return;
-    }
+  note.favorite = !note.favorite;
+  note.updatedAt = new Date().toISOString();
 
-    const confirmed = window.confirm(
-      `Permanently delete ${deleted.length} note(s) from Trash? This cannot be undone.`
-    );
-
-    if (!confirmed) return;
-
-    await new Promise((resolve, reject) => {
-      const transaction = db.transaction(STORE_NAME, "readwrite");
-      const store = transaction.objectStore(STORE_NAME);
-
-      deleted.forEach((note) => store.delete(note.id));
-
-      transaction.oncomplete = resolve;
-      transaction.onerror = () => reject(transaction.error);
-      transaction.onabort = () => reject(transaction.error);
-    });
-
-    await renderNotes();
-    showToast("Trash emptied.");
-  } catch (error) {
-    console.error("Empty Trash failed:", error);
-    showToast("Could not empty Trash.");
-  }
+  await saveNote(note);
+  await renderNotes();
 }
 
-/* -------------------- Backup export and restore/import -------------------- */
-
-async function exportBackup() {
-  try {
-    const notes = await getAllNotes();
-
-    const backup = {
-      app: "Developer MASTERMIND",
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      notes
-    };
-
-    const blob = new Blob(
-      [JSON.stringify(backup, null, 2)],
-      { type: "application/json;charset=utf-8" }
-    );
-
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-
-    link.href = url;
-    link.download =
-      `developer-mastermind-backup-${new Date().toISOString().slice(0, 10)}.json`;
-
-    link.style.display = "none";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-
-    setTimeout(() => URL.revokeObjectURL(url), 1500);
-
-    showToast("Backup export started. Check your Downloads folder.");
-  } catch (error) {
-    console.error("Backup export failed:", error);
-    showToast("Could not export backup. Please try again.");
-  }
+async function exportNotes() {
+  const notes = await getAllNotes();
+  downloadTextFile(
+    JSON.stringify(notes, null, 2),
+    `developer-mastermind-notes-${new Date().toISOString().slice(0, 10)}.json`,
+    "application/json"
+  );
+  showToast("Notes backup exported.");
 }
 
-async function importBackup(file) {
+async function importNotes(file) {
   if (!file) return;
 
   try {
-    if (file.size > 25 * 1024 * 1024) {
-      showToast("Backup is too large. Maximum size is 25 MB.");
-      return;
-    }
-
     const text = await file.text();
     const parsed = JSON.parse(text);
 
-    const incoming = Array.isArray(parsed) ? parsed : parsed?.notes;
-
-    if (!Array.isArray(incoming)) {
-      throw new Error("The file does not contain a notes array.");
+    if (!Array.isArray(parsed)) {
+      throw new Error("Invalid backup format.");
     }
 
-    if (incoming.length > 10000) {
-      showToast("Backup contains too many notes.");
-      return;
+    for (const item of parsed) {
+      if (item && typeof item === "object") {
+        await saveNote(normalizeNote(item));
+      }
     }
-
-    const validNotes = incoming.filter((note) =>
-      note &&
-      typeof note === "object" &&
-      !Array.isArray(note) &&
-      (typeof note.id === "string" || typeof note.id === "number") &&
-      String(note.id).length > 0 &&
-      (typeof note.content === "string" || note.content == null) &&
-      (typeof note.title === "string" || note.title == null)
-    );
-
-    if (validNotes.length === 0 && incoming.length > 0) {
-      showToast("No valid notes were found in this backup.");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Import ${validNotes.length} note(s)? Notes with matching IDs will be updated. Other existing notes will be kept.`
-    );
-
-    if (!confirmed) return;
-
-    await new Promise((resolve, reject) => {
-      const transaction = db.transaction(STORE_NAME, "readwrite");
-      const store = transaction.objectStore(STORE_NAME);
-
-      validNotes.forEach((rawNote) => {
-        const note = normaliseNote({
-          ...rawNote,
-          id: String(rawNote.id)
-        });
-
-        store.put(note);
-      });
-
-      transaction.oncomplete = resolve;
-      transaction.onerror = () => reject(transaction.error);
-      transaction.onabort = () => reject(transaction.error);
-    });
 
     await renderNotes();
-    showToast(`Backup restored: ${validNotes.length} note(s) imported.`);
+    showToast("Notes backup imported.");
   } catch (error) {
-    console.error("Backup restore failed:", error);
-    showToast("Could not restore backup. Choose a valid MASTERMIND JSON file.");
+    console.error(error);
+    showToast("Could not import this backup file.", "error");
   }
 }
 
-/* -------------------- Theme -------------------- */
+function downloadTextFile(content, filename, mimeType = "text/plain") {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
 
-function applyTheme(theme) {
-  const prefersDark = window.matchMedia &&
-    window.matchMedia("(prefers-color-scheme: dark)").matches;
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 
-  const effectiveTheme = theme === "system"
-    ? (prefersDark ? "dark" : "light")
-    : theme;
-
-  document.documentElement.dataset.theme = effectiveTheme;
-
-  const button = $("#themeButton");
-
-  if (button) {
-    button.textContent = effectiveTheme === "dark" ? "☼" : "◐";
-    button.title = "Current theme: " + theme + ". Click to change.";
-    button.setAttribute("aria-label", "Current theme: " + theme + ". Change theme.");
-  }
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function setTheme(theme) {
-  if (!["light", "dark", "system"].includes(theme)) theme = "system";
+function setupNotes() {
+  const newButtons = [
+    $("#newNoteButton"),
+    $("#newNoteBtn"),
+    $("#createNoteButton"),
+    ...$$("[data-action='new-note']")
+  ].filter(Boolean);
 
-  try {
-    localStorage.setItem("dm_theme", theme);
-  } catch (error) {
-    console.warn("Theme preference could not be saved.", error);
-  }
+  newButtons.forEach(button => {
+    button.addEventListener("click", createNewNote);
+  });
 
-  applyTheme(theme);
-}
+  const saveButtons = [
+    $("#saveNoteButton"),
+    $("#saveNoteBtn"),
+    ...$$("[data-action='save-note']")
+  ].filter(Boolean);
 
-function cycleTheme() {
-  let current = "system";
-
-  try {
-    current = localStorage.getItem("dm_theme") || "system";
-  } catch (error) {
-    console.warn(error);
-  }
-
-  const next = {
-    system: "light",
-    light: "dark",
-    dark: "system"
-  }[current] || "system";
-
-  setTheme(next);
-  showToast("Theme: " + next);
-}
-
-function setupTheme() {
-  let savedTheme = "system";
-
-  try {
-    savedTheme = localStorage.getItem("dm_theme") || "system";
-  } catch (error) {
-    console.warn(error);
-  }
-
-  applyTheme(savedTheme);
-
-  if (window.matchMedia) {
-    window.matchMedia("(prefers-color-scheme: dark)")
-      .addEventListener?.("change", () => {
-        let theme = "system";
-
-        try {
-          theme = localStorage.getItem("dm_theme") || "system";
-        } catch (error) {
-          console.warn(error);
-        }
-
-        if (theme === "system") applyTheme("system");
+  saveButtons.forEach(button => {
+    button.addEventListener("click", () => {
+      saveCurrentNote().catch(error => {
+        console.error(error);
+        showToast("Could not save note.", "error");
       });
+    });
+  });
+
+  const cancelButtons = [
+    $("#cancelNoteButton"),
+    $("#cancelNoteBtn"),
+    ...$$("[data-action='cancel-note']")
+  ].filter(Boolean);
+
+  cancelButtons.forEach(button => {
+    button.addEventListener("click", () => showView("notes"));
+  });
+
+  const searchInput =
+    $("#notesSearch") || $("#noteSearch") || $("#searchNotes");
+
+  if (searchInput) {
+    searchInput.addEventListener("input", () => {
+      currentSearch = searchInput.value.trim();
+      renderNotes();
+    });
   }
+
+  const folderSelect = $("#folderFilter") || $("#notesFolderFilter");
+  if (folderSelect) {
+    folderSelect.addEventListener("change", () => {
+      currentNoteFolder = folderSelect.value || "all";
+      renderNotes();
+    });
+  }
+
+  const filterButtons = $$("[data-note-filter]");
+  filterButtons.forEach(button => {
+    button.addEventListener("click", () => {
+      currentNoteFilter = button.dataset.noteFilter || "all";
+
+      filterButtons.forEach(item => item.classList.remove("active"));
+      button.classList.add("active");
+
+      renderNotes();
+    });
+  });
+
+  const exportButton =
+    $("#exportNotesButton") || $("#exportNotes");
+
+  exportButton?.addEventListener("click", () => {
+    exportNotes().catch(error => {
+      console.error(error);
+      showToast("Could not export notes.", "error");
+    });
+  });
+
+  const importInput =
+    $("#importNotesInput") || $("#importNotesFile");
+
+  importInput?.addEventListener("change", event => {
+    importNotes(event.target.files?.[0]).finally(() => {
+      event.target.value = "";
+    });
+  });
+
+  const grid = getNotesGrid();
+
+  grid?.addEventListener("click", event => {
+    const button = event.target.closest("[data-note-action]");
+    if (!button) return;
+
+    const { noteAction, id } = button.dataset;
+    if (!id) return;
+
+    const actions = {
+      edit: () => editNote(id),
+      trash: () => trashNote(id),
+      restore: () => restoreNote(id),
+      purge: () => permanentlyDeleteNote(id),
+      favorite: () => toggleNoteFavorite(id)
+    };
+
+    if (actions[noteAction]) {
+      actions[noteAction]().catch(error => {
+        console.error(error);
+        showToast("Could not complete this note action.", "error");
+      });
+    }
+  });
 }
 
-/* -------------------- Event delegation -------------------- */
+/* =========================================
+   NAVIGATION
+========================================= */
 
-async function handleGridClick(event) {
-  const actionButton = event.target.closest("[data-note-action]");
+const pageTitles = {
+  home: "Dashboard",
+  notes: "Notes",
+  editor: "Note Editor",
+  planner: "Study Planner",
+  focus: "Focus Timer",
+  library: "Photo & PDF Library",
+  flashcards: "Flashcards & Revision"
+};
 
-  if (actionButton) {
-    event.stopPropagation();
+function showView(view) {
+  const knownViews = [
+    "home",
+    "notes",
+    "editor",
+    "planner",
+    "focus",
+    "library",
+    "flashcards"
+  ];
 
-    const id = actionButton.dataset.noteId;
-    const action = actionButton.dataset.noteAction;
+  const selected = knownViews.includes(view) ? view : "home";
 
-    if (action === "restore") await restoreNote(id);
-    else if (action === "purge") await permanentlyDeleteNote(id);
+  const viewIds = {
+    home: ["homeView", "dashboardView"],
+    notes: ["notesView"],
+    editor: ["editorView"],
+    planner: ["plannerView"],
+    focus: ["focusView"],
+    library: ["libraryView"],
+    flashcards: ["flashcardsView"]
+  };
 
-    return;
+  const allViewIds = Object.values(viewIds).flat();
+
+  allViewIds.forEach(id => {
+    const element = document.getElementById(id);
+    if (element) element.hidden = true;
+  });
+
+  const placeholder = $("#placeholderView");
+  if (placeholder) placeholder.hidden = true;
+
+  let target = null;
+
+  for (const id of viewIds[selected] || []) {
+    target = document.getElementById(id);
+    if (target) break;
   }
 
-  const createButton = event.target.closest('[data-action="new-note"]');
-
-  if (createButton) {
-    await createNewNote();
-    return;
+  if (target) {
+    target.hidden = false;
+  } else if (selected === "home" || selected === "notes" || selected === "editor") {
+    // Some existing versions place the dashboard or notes directly in the main area.
+    const fallback = $(`[data-page="${selected}"]`);
+    if (fallback) {
+      fallback.hidden = false;
+    } else if (placeholder) {
+      placeholder.hidden = false;
+      setText("#placeholderTitle", pageTitles[selected]);
+      setText("#placeholderDescription", "This section is not available in this HTML version.");
+    }
+  } else if (placeholder) {
+    placeholder.hidden = false;
+    setText("#placeholderTitle", pageTitles[selected]);
+    setText("#placeholderDescription", "This section is being prepared.");
   }
 
-  const card = event.target.closest("[data-note-id]");
+  $$("[data-view]").forEach(button => {
+    const active = button.dataset.view === selected;
+    button.classList.toggle("active", active);
 
-  if (card) await openNote(card.dataset.noteId);
+    if (active) {
+      button.setAttribute("aria-current", "page");
+    } else {
+      button.removeAttribute("aria-current");
+    }
+  });
+
+  setText("#breadcrumb", pageTitles[selected]);
+  setText("#pageBreadcrumb", pageTitles[selected]);
+
+  if (selected === "notes") renderNotes();
+  if (selected === "planner") renderPlanner();
+  if (selected === "focus") updateFocusDisplay();
+  if (selected === "library") renderLibrary();
+  if (selected === "flashcards") renderFlashcards();
 }
 
 function setupNavigation() {
-  document.querySelectorAll(".nav-item[data-view]").forEach((button) => {
-    button.addEventListener("click", () => showView(button.dataset.view));
+  document.addEventListener("click", event => {
+    const button = event.target.closest("[data-view]");
+    if (!button) return;
+
+    event.preventDefault();
+    showView(button.dataset.view);
   });
 
-  $("#newNoteButton")?.addEventListener("click", createNewNote);
-  $("#heroNoteButton")?.addEventListener("click", createNewNote);
-  $("#notesNewButton")?.addEventListener("click", createNewNote);
-
-  $("#viewAllNotes")?.addEventListener("click", () => showView("notes"));
-  $("#backToNotes")?.addEventListener("click", () => showView("notes"));
-
-  $("#saveNoteButton")?.addEventListener("click", () => {
-    saveCurrentNote(true);
-  });
-
-  $("#deleteNoteButton")?.addEventListener("click", deleteCurrentNote);
-  $("#themeButton")?.addEventListener("click", cycleTheme);
-
-  $("#placeholderNotesButton")?.addEventListener("click", () => showView("notes"));
-
-  $("#menuButton")?.addEventListener("click", () => {
-    elements.sidebar?.classList.toggle("open");
-  });
-
-  elements.search?.addEventListener("input", renderNotes);
-  elements.notesSearch?.addEventListener("input", renderNotes);
-
-  elements.notesGrid?.addEventListener("click", handleGridClick);
-  elements.allNotesGrid?.addEventListener("click", handleGridClick);
-
-  for (const grid of [elements.notesGrid, elements.allNotesGrid]) {
-    grid?.addEventListener("keydown", (event) => {
-      if (
-        (event.key === "Enter" || event.key === " ") &&
-        event.target.matches("[data-note-id]")
-      ) {
-        event.preventDefault();
-        openNote(event.target.dataset.noteId);
-      }
+  $$("[data-go-to]").forEach(button => {
+    button.addEventListener("click", () => {
+      showView(button.dataset.goTo);
     });
+  });
+}
+
+/* =========================================
+   STUDY PLANNER
+========================================= */
+
+function getPlannerTasks() {
+  return readJSON(STORAGE_KEYS.planner, []);
+}
+
+function savePlannerTasks(tasks) {
+  return writeJSON(STORAGE_KEYS.planner, tasks);
+}
+
+function setupPlanner() {
+  const form = $("#plannerForm");
+  if (!form) return;
+
+  const dateInput = $("#plannerDate");
+  if (dateInput && !dateInput.value) {
+    dateInput.value = new Date().toISOString().slice(0, 10);
   }
 
-  elements.title?.addEventListener("input", scheduleAutosave);
-  elements.content?.addEventListener("input", scheduleAutosave);
-
-  window.addEventListener("beforeinstallprompt", (event) => {
+  form.addEventListener("submit", event => {
     event.preventDefault();
-    deferredInstallPrompt = event;
-  });
 
-  $("#installButton")?.addEventListener("click", async () => {
-    if (!deferredInstallPrompt) {
-      showToast("Use your browser menu and choose Install app or Add to Home screen.");
+    const taskInput = $("#plannerTask");
+    const priorityInput = $("#plannerPriority");
+    const reminderInput = $("#plannerReminder");
+
+    const title = taskInput?.value.trim();
+    if (!title) {
+      showToast("Please enter a task.", "error");
+      taskInput?.focus();
       return;
     }
 
-    try {
-      await deferredInstallPrompt.prompt();
-      await deferredInstallPrompt.userChoice;
-    } catch (error) {
-      console.warn("Install prompt was not completed.", error);
+    const tasks = getPlannerTasks();
+
+    tasks.push({
+      id: makeId(),
+      title,
+      date: dateInput?.value || "",
+      priority: priorityInput?.value || "medium",
+      reminder: Boolean(reminderInput?.checked),
+      completed: false,
+      createdAt: new Date().toISOString()
+    });
+
+    if (!savePlannerTasks(tasks)) return;
+
+    form.reset();
+
+    if (dateInput) {
+      dateInput.value = new Date().toISOString().slice(0, 10);
     }
 
-    deferredInstallPrompt = null;
+    renderPlanner();
+    showToast("Study task added.");
   });
+
+  $("#plannerFilter")?.addEventListener("change", renderPlanner);
+
+  $("#plannerTaskList")?.addEventListener("click", event => {
+    const button = event.target.closest("[data-planner-action]");
+    if (!button) return;
+
+    const { plannerAction, id } = button.dataset;
+    const tasks = getPlannerTasks();
+    const task = tasks.find(item => item.id === id);
+
+    if (!task) return;
+
+    if (plannerAction === "delete") {
+      const updated = tasks.filter(item => item.id !== id);
+      savePlannerTasks(updated);
+      renderPlanner();
+      showToast("Task deleted.");
+    }
+
+    if (plannerAction === "complete") {
+      task.completed = !task.completed;
+      savePlannerTasks(tasks);
+      renderPlanner();
+    }
+  });
+
+  $("#plannerTaskList")?.addEventListener("change", event => {
+    const checkbox = event.target.closest("[data-planner-check]");
+    if (!checkbox) return;
+
+    const tasks = getPlannerTasks();
+    const task = tasks.find(item => item.id === checkbox.dataset.plannerCheck);
+
+    if (!task) return;
+
+    task.completed = checkbox.checked;
+    savePlannerTasks(tasks);
+    renderPlanner();
+  });
+
+  renderPlanner();
 }
 
-/* -------------------- Service worker and connection -------------------- */
+function renderPlanner() {
+  const list = $("#plannerTaskList");
+  if (!list) return;
 
-async function setupServiceWorker() {
-  if (!("serviceWorker" in navigator)) {
-    if ($("#offlineStatus")) $("#offlineStatus").textContent = "Limited";
+  const allTasks = getPlannerTasks();
+  const filter = $("#plannerFilter")?.value || "all";
+
+  setText("#plannerTotal", allTasks.length);
+  setText("#plannerCompleted", allTasks.filter(task => task.completed).length);
+  setText("#plannerPending", allTasks.filter(task => !task.completed).length);
+
+  let tasks = [...allTasks];
+
+  if (filter === "pending") tasks = tasks.filter(task => !task.completed);
+  if (filter === "completed") tasks = tasks.filter(task => task.completed);
+  if (filter === "today") {
+    const today = new Date().toISOString().slice(0, 10);
+    tasks = tasks.filter(task => task.date === today);
+  }
+
+  tasks.sort((a, b) => {
+    if (a.completed !== b.completed) return a.completed ? 1 : -1;
+    return (a.date || "9999-99-99").localeCompare(b.date || "9999-99-99");
+  });
+
+  if (!tasks.length) {
+    list.innerHTML = `
+      <div class="module-empty">
+        No study tasks yet. Add a task above to get started.
+      </div>
+    `;
     return;
   }
 
-  try {
-    await navigator.serviceWorker.register("./sw.js");
+  list.innerHTML = tasks.map(task => {
+    const priority = ["low", "medium", "high"].includes(task.priority)
+      ? task.priority
+      : "medium";
 
-    if ($("#offlineStatus")) {
-      $("#offlineStatus").textContent = navigator.onLine ? "Ready" : "Offline";
+    return `
+      <article class="planner-task ${task.completed ? "completed" : ""}">
+        <input
+          type="checkbox"
+          data-planner-check="${escapeHTML(task.id)}"
+          ${task.completed ? "checked" : ""}
+          aria-label="Mark ${escapeHTML(task.title)} as completed"
+        >
+
+        <div class="planner-task-main">
+          <p class="planner-task-title">${escapeHTML(task.title)}</p>
+          <div class="planner-task-meta">
+            ${task.date ? `<span>📅 ${escapeHTML(task.date)}</span>` : ""}
+            <span class="priority priority-${priority}">${escapeHTML(priority)}</span>
+            ${task.reminder ? "<span>🔔 Reminder requested</span>" : ""}
+          </div>
+        </div>
+
+        <div class="planner-task-actions">
+          <button type="button" data-planner-action="delete" data-id="${escapeHTML(task.id)}">
+            Delete
+          </button>
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+/* =========================================
+   FOCUS TIMER
+========================================= */
+
+function setupFocusTimer() {
+  const modeButtons = $$(".focus-mode");
+
+  modeButtons.forEach(button => {
+    button.addEventListener("click", () => {
+      if (focusRunning) {
+        showToast("Pause the timer before changing its mode.", "error");
+        return;
+      }
+
+      const minutes = Number(button.dataset.focusMinutes);
+      if (!Number.isFinite(minutes) || minutes < 1) return;
+
+      currentFocusMinutes = minutes;
+      focusRemainingSeconds = minutes * 60;
+
+      modeButtons.forEach(item => {
+        item.classList.toggle("active", item === button);
+        item.setAttribute("aria-pressed", String(item === button));
+      });
+
+      updateFocusDisplay();
+    });
+  });
+
+  $("#focusStart")?.addEventListener("click", startFocusTimer);
+  $("#focusPause")?.addEventListener("click", pauseFocusTimer);
+  $("#focusReset")?.addEventListener("click", resetFocusTimer);
+
+  renderFocusHistory();
+  updateFocusDisplay();
+}
+
+function startFocusTimer() {
+  if (focusRunning) return;
+
+  if (focusRemainingSeconds <= 0) {
+    focusRemainingSeconds = currentFocusMinutes * 60;
+  }
+
+  focusTaskName = $("#focusTask")?.value.trim() || "Study session";
+  focusStartedAt = Date.now();
+  focusRunning = true;
+
+  clearInterval(focusInterval);
+
+  focusInterval = setInterval(() => {
+    if (document.hidden) {
+      // Keep counting while the page is hidden; calculate elapsed time from timestamps.
     }
-  } catch (error) {
-    console.error("Service worker registration failed:", error);
-    if ($("#offlineStatus")) $("#offlineStatus").textContent = "Limited";
+
+    const elapsed = Math.floor((Date.now() - focusStartedAt) / 1000);
+    focusRemainingSeconds = Math.max(
+      0,
+      currentFocusMinutes * 60 - elapsed
+    );
+
+    updateFocusDisplay();
+
+    if (focusRemainingSeconds <= 0) {
+      completeFocusSession();
+    }
+  }, 250);
+
+  updateFocusDisplay();
+}
+
+function pauseFocusTimer() {
+  if (!focusRunning) return;
+
+  const elapsed = Math.floor((Date.now() - focusStartedAt) / 1000);
+  focusRemainingSeconds = Math.max(
+    0,
+    currentFocusMinutes * 60 - elapsed
+  );
+
+  clearInterval(focusInterval);
+  focusInterval = null;
+  focusRunning = false;
+  focusStartedAt = null;
+
+  updateFocusDisplay();
+}
+
+function resetFocusTimer() {
+  clearInterval(focusInterval);
+  focusInterval = null;
+  focusRunning = false;
+  focusStartedAt = null;
+  focusRemainingSeconds = currentFocusMinutes * 60;
+
+  updateFocusDisplay();
+}
+
+function completeFocusSession() {
+  clearInterval(focusInterval);
+  focusInterval = null;
+  focusRunning = false;
+  focusStartedAt = null;
+  focusRemainingSeconds = 0;
+
+  const history = readJSON(STORAGE_KEYS.focusHistory, []);
+
+  history.unshift({
+    id: makeId(),
+    task: focusTaskName || "Study session",
+    minutes: currentFocusMinutes,
+    completedAt: new Date().toISOString()
+  });
+
+  writeJSON(STORAGE_KEYS.focusHistory, history.slice(0, 100));
+  renderFocusHistory();
+  updateFocusDisplay();
+  showToast("Focus session complete! Great work.");
+
+  if ("Notification" in window && Notification.permission === "granted") {
+    try {
+      new Notification("Developer Mastermind", {
+        body: "Your focus session is complete."
+      });
+    } catch (error) {
+      console.warn("Notification could not be shown.", error);
+    }
   }
 }
 
-function updateConnectionStatus() {
-  const online = navigator.onLine;
+function updateFocusDisplay() {
+  const minutes = Math.floor(focusRemainingSeconds / 60);
+  const seconds = focusRemainingSeconds % 60;
 
-  if ($("#connectionText")) {
-    $("#connectionText").textContent = online
-      ? "Local workspace"
-      : "Offline mode";
-  }
+  setText(
+    "#focusClock",
+    `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+  );
 
-  if ($("#offlineStatus")) {
-    $("#offlineStatus").textContent = online ? "Ready" : "Offline";
-  }
+  setText(
+    "#focusStatus",
+    focusRunning ? "Focus session in progress…" : "Ready when you are."
+  );
+
+  const startButton = $("#focusStart");
+  const pauseButton = $("#focusPause");
+
+  if (startButton) startButton.disabled = focusRunning;
+  if (pauseButton) pauseButton.disabled = !focusRunning;
+
+  document.title = focusRunning
+    ? `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")} — Focus Timer`
+    : "Developer Mastermind";
 }
 
-/* -------------------- Start app -------------------- */
+function renderFocusHistory() {
+  const container = $("#focusHistory");
+  if (!container) return;
+
+  const history = readJSON(STORAGE_KEYS.focusHistory, []);
+
+  if (!history.length) {
+    container.innerHTML = `
+      <div class="module-empty">Your completed focus sessions will appear here.</div>
+    `;
+    return;
+  }
+
+  container.innerHTML = `
+    <h3>Recent sessions</h3>
+    <div class="module-list">
+      ${history.slice(0, 10).map(session => `
+        <article class="module-item">
+          <div class="module-item-main">
+            <h3>${escapeHTML(session.task || "Study session")}</h3>
+            <p>${escapeHTML(String(session.minutes))} minutes · ${escapeHTML(safeDate(session.completedAt))}</p>
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+/* =========================================
+   PHOTO & PDF LIBRARY
+   Files are saved locally in this browser.
+========================================= */
+
+function getLibraryFiles() {
+  return readJSON(STORAGE_KEYS.library, []);
+}
+
+function setupLibrary() {
+  const input = $("#libraryFiles");
+  if (!input) return;
+
+  input.addEventListener("change", async event => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+
+    const currentFiles = getLibraryFiles();
+
+    for (const file of files) {
+      if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
+        showToast(`Unsupported file: ${file.name}`, "error");
+        continue;
+      }
+
+      // Keep each upload reasonably small for browser storage.
+      if (file.size > 3 * 1024 * 1024) {
+        showToast(
+          `${file.name} is over 3 MB. Choose a smaller file for local storage.`,
+          "error"
+        );
+        continue;
+      }
+
+      try {
+        const dataUrl = await fileToDataURL(file);
+
+        currentFiles.unshift({
+          id: makeId(),
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          dataUrl,
+          addedAt: new Date().toISOString()
+        });
+      } catch (error) {
+        console.error(error);
+        showToast(`Could not read ${file.name}.`, "error");
+      }
+    }
+
+    if (writeJSON(STORAGE_KEYS.library, currentFiles)) {
+      showToast("Library updated.");
+    }
+
+    input.value = "";
+    renderLibrary();
+  });
+
+  $("#imagesToPdfButton")?.addEventListener("click", printImagesToPDF);
+
+  $("#libraryFileList")?.addEventListener("click", event => {
+    const button = event.target.closest("[data-library-action]");
+    if (!button) return;
+
+    const file = getLibraryFiles().find(
+      item => item.id === button.dataset.id
+    );
+
+    if (!file) return;
+
+    if (button.dataset.libraryAction === "open") {
+      openLibraryFile(file);
+    }
+
+    if (button.dataset.libraryAction === "download") {
+      downloadDataURL(file.dataUrl, file.name);
+    }
+
+    if (button.dataset.libraryAction === "delete") {
+      const remaining = getLibraryFiles().filter(
+        item => item.id !== file.id
+      );
+
+      if (writeJSON(STORAGE_KEYS.library, remaining)) {
+        renderLibrary();
+        showToast("File removed from library.");
+      }
+    }
+  });
+
+  renderLibrary();
+}
+
+function fileToDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderLibrary() {
+  const container = $("#libraryFileList");
+  if (!container) return;
+
+  const files = getLibraryFiles();
+
+  if (!files.length) {
+    container.innerHTML = `
+      <div class="module-empty">
+        No files yet. Choose photos or PDFs above to add them.
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = files.map(file => {
+    const isImage = file.type?.startsWith("image/");
+
+    return `
+      <article class="library-file">
+        ${
+          isImage
+            ? `<img src="${file.dataUrl}" alt="${escapeHTML(file.name)}" loading="lazy">`
+            : `<div class="empty-state-icon">📄</div>`
+        }
+
+        <div class="library-file-name">${escapeHTML(file.name)}</div>
+        <div class="library-file-meta">
+          ${escapeHTML(formatFileSize(file.size))} · ${escapeHTML(safeDate(file.addedAt))}
+        </div>
+
+        <div class="library-file-actions">
+          <button type="button" data-library-action="open" data-id="${escapeHTML(file.id)}">Open</button>
+          <button type="button" data-library-action="download" data-id="${escapeHTML(file.id)}">Download</button>
+          <button type="button" data-library-action="delete" data-id="${escapeHTML(file.id)}">Remove</button>
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+function formatFileSize(bytes = 0) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function downloadDataURL(dataUrl, filename) {
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function openLibraryFile(file) {
+  const newWindow = window.open();
+
+  if (!newWindow) {
+    showToast("Allow pop-ups to open this file.", "error");
+    return;
+  }
+
+  const isImage = file.type?.startsWith("image/");
+
+  newWindow.document.write(`
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>${escapeHTML(file.name)}</title>
+        <style>
+          body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: #171923;
+            color: white;
+            text-align: center;
+          }
+          img {
+            display: block;
+            max-width: 100%;
+            max-height: 90vh;
+            margin: 20px auto;
+            object-fit: contain;
+          }
+          iframe {
+            width: 100%;
+            height: 85vh;
+            border: 0;
+            background: white;
+          }
+        </style>
+      </head>
+      <body>
+        <h3>${escapeHTML(file.name)}</h3>
+        ${
+          isImage
+            ? `<img src="${file.dataUrl}" alt="${escapeHTML(file.name)}">`
+            : `<iframe title="${escapeHTML(file.name)}" src="${file.dataUrl}"></iframe>`
+        }
+      </body>
+    </html>
+  `);
+
+  newWindow.document.close();
+}
+
+function printImagesToPDF() {
+  const images = getLibraryFiles().filter(file =>
+    file.type?.startsWith("image/")
+  );
+
+  if (!images.length) {
+    showToast("Add at least one image first.", "error");
+    return;
+  }
+
+  const printWindow = window.open("", "_blank");
+
+  if (!printWindow) {
+    showToast("Allow pop-ups to create a PDF.", "error");
+    return;
+  }
+
+  const imageHTML = images.map(file => `
+    <section>
+      <h3>${escapeHTML(file.name)}</h3>
+      <img src="${file.dataUrl}" alt="${escapeHTML(file.name)}">
+    </section>
+  `).join("");
+
+  printWindow.document.write(`
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Images to PDF</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 18px; }
+          section { page-break-after: always; text-align: center; }
+          img { max-width: 100%; max-height: 85vh; object-fit: contain; }
+          @media print {
+            section { break-after: page; }
+            section:last-child { break-after: auto; }
+          }
+        </style>
+      </head>
+      <body>
+        ${imageHTML}
+        <script>
+          window.onload = () => setTimeout(() => window.print(), 500);
+        <\/script>
+      </body>
+    </html>
+  `);
+
+  printWindow.document.close();
+  showToast("In the print window, choose Save as PDF.");
+}
+
+/* =========================================
+   FLASHCARDS
+========================================= */
+
+function getFlashcards() {
+  return readJSON(STORAGE_KEYS.flashcards, []);
+}
+
+function saveFlashcards(cards) {
+  return writeJSON(STORAGE_KEYS.flashcards, cards);
+}
+
+function setupFlashcards() {
+  const form = $("#flashcardForm");
+  if (!form) return;
+
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+
+    const questionInput = $("#flashcardQuestion");
+    const answerInput = $("#flashcardAnswer");
+
+    const question = questionInput?.value.trim();
+    const answer = answerInput?.value.trim();
+
+    if (!question || !answer) {
+      showToast("Enter both a question and an answer.", "error");
+      return;
+    }
+
+    const cards = getFlashcards();
+
+    cards.unshift({
+      id: makeId(),
+      question,
+      answer,
+      known: false,
+      createdAt: new Date().toISOString()
+    });
+
+    if (!saveFlashcards(cards)) return;
+
+    form.reset();
+    renderFlashcards();
+    showToast("Flashcard added.");
+  });
+
+  $("#flashcardList")?.addEventListener("click", event => {
+    const button = event.target.closest("[data-flashcard-action]");
+    if (!button) return;
+
+    const id = button.dataset.id;
+    const action = button.dataset.flashcardAction;
+    const cards = getFlashcards();
+    const card = cards.find(item => item.id === id);
+
+    if (!card) return;
+
+    if (action === "toggle-answer") {
+      const answer = $(`[data-answer-for="${CSS.escape(id)}"]`);
+      if (answer) answer.hidden = !answer.hidden;
+      button.textContent = answer?.hidden ? "Show answer" : "Hide answer";
+    }
+
+    if (action === "known") {
+      card.known = !card.known;
+      saveFlashcards(cards);
+      renderFlashcards();
+    }
+
+    if (action === "delete") {
+      saveFlashcards(cards.filter(item => item.id !== id));
+      renderFlashcards();
+      showToast("Flashcard deleted.");
+    }
+  });
+
+  renderFlashcards();
+}
+
+function renderFlashcards() {
+  const container = $("#flashcardList");
+  if (!container) return;
+
+  const cards = getFlashcards();
+
+  setText("#flashcardCount", cards.length);
+
+  if (!cards.length) {
+    container.innerHTML = `
+      <div class="module-empty">
+        No flashcards yet. Add a question and answer to start revising.
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = cards.map(card => `
+    <article class="flashcard-item ${card.known ? "known" : ""}">
+      <h3 class="flashcard-question">${escapeHTML(card.question)}</h3>
+
+      <div
+        class="flashcard-answer"
+        data-answer-for="${escapeHTML(card.id)}"
+        hidden
+      >${escapeHTML(card.answer)}</div>
+
+      <div class="flashcard-actions">
+        <button
+          type="button"
+          data-flashcard-action="toggle-answer"
+          data-id="${escapeHTML(card.id)}"
+        >Show answer</button>
+
+        <button
+          type="button"
+          data-flashcard-action="known"
+          data-id="${escapeHTML(card.id)}"
+        >${card.known ? "Revise again" : "Mark learned"}</button>
+
+        <button
+          type="button"
+          data-flashcard-action="delete"
+          data-id="${escapeHTML(card.id)}"
+        >Delete</button>
+      </div>
+    </article>
+  `).join("");
+}
+
+/* =========================================
+   CONNECTION STATUS + SERVICE WORKER
+========================================= */
+
+function setupConnectionStatus() {
+  const update = () => {
+    const online = navigator.onLine;
+
+    $$(".connection-status").forEach(element => {
+      element.classList.toggle("offline", !online);
+      element.textContent = online ? "Online" : "Offline";
+    });
+
+    setText("#connectionStatus", online ? "Online" : "Offline");
+  };
+
+  window.addEventListener("online", update);
+  window.addEventListener("offline", update);
+  update();
+}
+
+function setupServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+
+  if (location.protocol !== "https:" && location.hostname !== "localhost") {
+    return;
+  }
+
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js")
+      .then(registration => {
+        console.log("Service worker registered:", registration.scope);
+      })
+      .catch(error => {
+        console.warn("Service worker registration failed:", error);
+      });
+  });
+}
+
+/* =========================================
+   GLOBAL BACKUP
+========================================= */
+
+function setupLocalDataBackup() {
+  const exportButton = $("#exportAppData");
+
+  exportButton?.addEventListener("click", async () => {
+    try {
+      const notes = await getAllNotes();
+
+      const backup = {
+        app: "Developer Mastermind",
+        exportedAt: new Date().toISOString(),
+        notes,
+        planner: getPlannerTasks(),
+        flashcards: getFlashcards(),
+        focusHistory: readJSON(STORAGE_KEYS.focusHistory, []),
+        library: getLibraryFiles()
+      };
+
+      downloadTextFile(
+        JSON.stringify(backup, null, 2),
+        `developer-mastermind-backup-${new Date().toISOString().slice(0, 10)}.json`,
+        "application/json"
+      );
+
+      showToast("App backup exported.");
+    } catch (error) {
+      console.error(error);
+      showToast("Could not export app data.", "error");
+    }
+  });
+}
+
+/* =========================================
+   INITIALIZATION
+========================================= */
 
 async function init() {
   setupTheme();
-  setupDynamicInterface();
   setupNavigation();
-  updateConnectionStatus();
-
-  window.addEventListener("online", updateConnectionStatus);
-  window.addEventListener("offline", updateConnectionStatus);
+  setupNotes();
+  setupPlanner();
+  setupFocusTimer();
+  setupLibrary();
+  setupFlashcards();
+  setupConnectionStatus();
+  setupLocalDataBackup();
 
   try {
     await openDatabase();
     await renderNotes();
-    await setupServiceWorker();
   } catch (error) {
-    console.error("App startup failed:", error);
-    showToast("Local database could not start. Check browser support and reload.");
+    console.error("Notes database error:", error);
+    showToast(
+      "Notes could not be opened. Your existing data has not been intentionally deleted.",
+      "error"
+    );
+  }
 
-    if ($("#offlineStatus")) $("#offlineStatus").textContent = "Check browser";
+  setupServiceWorker();
+
+  // Keep the initial screen consistent with the existing HTML.
+  const activeNav = $("[data-view].active");
+  if (activeNav) {
+    showView(activeNav.dataset.view);
+  } else {
+    showView("home");
   }
 }
 
-document.addEventListener("DOMContentLoaded", init);
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", init, { once: true });
+} else {
+  init();
+}
