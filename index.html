@@ -35,19 +35,15 @@
         </button>
         <button type="button" class="nav-item" data-view="planner">
           <span>◷</span> Study Planner
-          <span class="soon-tag">Soon</span>
         </button>
         <button type="button" class="nav-item" data-view="focus">
           <span>◉</span> Focus Timer
-          <span class="soon-tag">Soon</span>
         </button>
         <button type="button" class="nav-item" data-view="library">
           <span>▧</span> Photo &amp; PDF
-          <span class="soon-tag">Soon</span>
         </button>
         <button type="button" class="nav-item" data-view="flashcards">
           <span>▱</span> Flashcards
-          <span class="soon-tag">Soon</span>
         </button>
       </nav>
 
@@ -55,7 +51,7 @@
         <div class="privacy-card">
           <span class="privacy-icon">◈</span>
           <strong>Your data stays local</strong>
-          <p>Notes are stored on this device, not in a cloud account.</p>
+          <p>Notes and study data are stored on this device.</p>
         </div>
         <div class="sidebar-footer">MADE FOR FOCUSED LEARNING</div>
       </div>
@@ -192,7 +188,7 @@
         </div>
       </section>
 
-      <!-- ALL NOTES, TRASH, FAVORITES AND BACKUP -->
+      <!-- ALL NOTES -->
       <section class="page hidden" id="notesView">
         <div class="page-heading">
           <div>
@@ -212,9 +208,7 @@
             aria-label="Search all notes" autocomplete="off">
         </div>
 
-        <!-- JavaScript adds Trash, Favorites and Backup controls here. -->
         <div id="notesToolbarHost"></div>
-
         <div class="notes-grid" id="allNotesGrid" aria-live="polite"></div>
       </section>
 
@@ -258,14 +252,206 @@
         </div>
       </section>
 
-      <!-- PLACEHOLDER PAGES -->
+      <!-- STUDY PLANNER -->
+      <section class="page hidden" id="plannerView">
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow">PLAN YOUR LEARNING</div>
+            <h1>Study <span class="gradient-text">Planner.</span></h1>
+            <p class="subtitle">Organise tasks, deadlines and study goals.</p>
+          </div>
+        </div>
+
+        <div class="stats-grid planner-stats">
+          <article class="stat-card">
+            <div class="stat-label">TOTAL TASKS</div>
+            <div class="stat-number" id="plannerTotal">0</div>
+          </article>
+          <article class="stat-card">
+            <div class="stat-label">COMPLETED</div>
+            <div class="stat-number" id="plannerCompleted">0</div>
+          </article>
+          <article class="stat-card">
+            <div class="stat-label">PENDING</div>
+            <div class="stat-number" id="plannerPending">0</div>
+          </article>
+        </div>
+
+        <div class="editor-panel module-panel">
+          <h2>Add a study task</h2>
+          <form id="plannerForm">
+            <div class="module-form-grid">
+              <div class="dm-editor-field">
+                <label for="plannerTask">TASK NAME</label>
+                <input id="plannerTask" maxlength="160" required
+                  placeholder="e.g. Revise chapter 3">
+              </div>
+              <div class="dm-editor-field">
+                <label for="plannerDate">DEADLINE</label>
+                <input id="plannerDate" type="date">
+              </div>
+              <div class="dm-editor-field">
+                <label for="plannerPriority">PRIORITY</label>
+                <select id="plannerPriority">
+                  <option value="normal">Normal</option>
+                  <option value="high">High</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+              <div class="dm-editor-field">
+                <label for="plannerReminder">REMINDER TIME (OPTIONAL)</label>
+                <input id="plannerReminder" type="datetime-local">
+              </div>
+            </div>
+            <div class="editor-actions module-actions">
+              <button class="primary-button" type="submit">＋ Add task</button>
+            </div>
+            <p class="dm-help">Reminders may require the app to be open and browser notification permission.</p>
+          </form>
+        </div>
+
+        <div class="section-heading">
+          <div>
+            <h2>Your tasks</h2>
+            <p class="section-subtitle">Mark tasks complete as you progress.</p>
+          </div>
+          <select id="plannerFilter" aria-label="Filter planner tasks">
+            <option value="all">All tasks</option>
+            <option value="pending">Pending</option>
+            <option value="completed">Completed</option>
+          </select>
+        </div>
+        <div id="plannerTaskList" class="module-list" aria-live="polite"></div>
+      </section>
+
+      <!-- FOCUS TIMER -->
+      <section class="page hidden" id="focusView">
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow">ONE TASK AT A TIME</div>
+            <h1>Focus <span class="gradient-text">Timer.</span></h1>
+            <p class="subtitle">Work in focused sessions and take regular breaks.</p>
+          </div>
+        </div>
+
+        <div class="editor-panel focus-panel">
+          <label class="field-label" for="focusTask">WHAT ARE YOU WORKING ON?</label>
+          <input id="focusTask" class="title-input"
+            maxlength="120" placeholder="e.g. Mathematics revision">
+
+          <div class="focus-mode-controls" role="group" aria-label="Timer duration">
+            <button type="button" class="secondary-button focus-mode active"
+              data-focus-minutes="25">Focus · 25 min</button>
+            <button type="button" class="secondary-button focus-mode"
+              data-focus-minutes="5">Short break · 5 min</button>
+            <button type="button" class="secondary-button focus-mode"
+              data-focus-minutes="15">Long break · 15 min</button>
+          </div>
+
+          <div class="focus-clock" id="focusClock" role="timer"
+            aria-live="off">25:00</div>
+          <p id="focusStatus" class="section-subtitle" aria-live="polite">
+            Ready when you are.
+          </p>
+
+          <div class="editor-actions focus-actions">
+            <button type="button" class="primary-button" id="focusStart">Start</button>
+            <button type="button" class="secondary-button" id="focusPause">Pause</button>
+            <button type="button" class="secondary-button" id="focusReset">Reset</button>
+          </div>
+        </div>
+
+        <div class="section-heading">
+          <div>
+            <h2>Session history</h2>
+            <p class="section-subtitle">Completed focus sessions on this device.</p>
+          </div>
+        </div>
+        <div id="focusHistory" class="module-list" aria-live="polite"></div>
+      </section>
+
+      <!-- PHOTO AND PDF LIBRARY -->
+      <section class="page hidden" id="libraryView">
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow">YOUR STUDY FILES</div>
+            <h1>Photo &amp; PDF <span class="gradient-text">Library.</span></h1>
+            <p class="subtitle">Choose study images and documents to work with.</p>
+          </div>
+        </div>
+
+        <div class="editor-panel module-panel">
+          <h2>Choose files</h2>
+          <p class="section-subtitle">
+            Select photos or PDFs. Files are processed in this browser; browser storage limits may apply.
+          </p>
+          <label class="field-label" for="libraryFiles">PHOTOS OR PDF FILES</label>
+          <input id="libraryFiles" type="file"
+            accept="image/*,application/pdf" multiple>
+          <div id="libraryFileList" class="module-list" aria-live="polite"></div>
+        </div>
+
+        <div class="editor-panel module-panel">
+          <h2>Photo to PDF</h2>
+          <p class="section-subtitle">
+            Select images above and use the available photo-to-PDF action.
+          </p>
+          <button type="button" class="primary-button" id="imagesToPdfButton">
+            Create PDF from selected images
+          </button>
+          <p class="dm-help">
+            PDF creation depends on the implementation in app.js. OCR language support and accuracy may vary.
+          </p>
+        </div>
+      </section>
+
+      <!-- FLASHCARDS -->
+      <section class="page hidden" id="flashcardsView">
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow">REMEMBER WHAT YOU LEARN</div>
+            <h1>Flashcards <span class="gradient-text">&amp; Revision.</span></h1>
+            <p class="subtitle">Create question-and-answer cards for revision.</p>
+          </div>
+        </div>
+
+        <div class="editor-panel module-panel">
+          <h2>Create a flashcard</h2>
+          <form id="flashcardForm">
+            <div class="dm-editor-field">
+              <label for="flashcardQuestion">QUESTION / FRONT</label>
+              <textarea id="flashcardQuestion" rows="3" maxlength="500"
+                required placeholder="Write a question or term..."></textarea>
+            </div>
+            <div class="dm-editor-field module-field-spacing">
+              <label for="flashcardAnswer">ANSWER / BACK</label>
+              <textarea id="flashcardAnswer" rows="3" maxlength="500"
+                required placeholder="Write the answer..."></textarea>
+            </div>
+            <div class="editor-actions module-actions">
+              <button class="primary-button" type="submit">＋ Add flashcard</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="section-heading">
+          <div>
+            <h2>Your flashcards</h2>
+            <p class="section-subtitle">Reveal the answer, then track your revision.</p>
+          </div>
+          <span id="flashcardCount" class="stat-label">0 CARDS</span>
+        </div>
+        <div id="flashcardList" class="module-list" aria-live="polite"></div>
+      </section>
+
+      <!-- FALLBACK PLACEHOLDER -->
       <section class="page hidden" id="placeholderView">
         <div class="placeholder-card">
           <div class="placeholder-icon" id="placeholderIcon">✦</div>
-          <div class="eyebrow">COMING IN A FUTURE MODULE</div>
-          <h1 id="placeholderTitle">Study Planner</h1>
+          <div class="eyebrow">WORKSPACE MODULE</div>
+          <h1 id="placeholderTitle">Workspace</h1>
           <p id="placeholderDescription">
-            This section will be added in a later implementation phase.
+            Select a section from the navigation.
           </p>
           <button type="button" class="primary-button" id="placeholderNotesButton">
             Go to My Notes →
