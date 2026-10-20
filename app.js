@@ -96,9 +96,9 @@ function formatDate(value) {
 
 function formatBytes(bytes) {
   if (!Number.isFinite(bytes) || bytes < 0) return "";
-  if (bytes < 1024) return ${bytes} B;
-  if (bytes < 1024 * 1024) return ${(bytes / 1024).toFixed(1)} KB;
-  return ${(bytes / (1024 * 1024)).toFixed(1)} MB;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function showToast(message, type = "") {
@@ -109,7 +109,7 @@ function showToast(message, type = "") {
   }
 
   const toast = document.createElement("div");
-  toast.className = toast ${type};
+  toast.className = `toast ${type}`;
   toast.textContent = message;
   container.appendChild(toast);
 
@@ -152,7 +152,7 @@ function setupTheme() {
     const current = document.documentElement.dataset.theme;
     const next = current === "light" ? "dark" : "light";
     applyTheme(next);
-    showToast(${next === "light" ? "Light" : "Dark"} theme enabled.);
+    showToast(`${next === "light" ? "Light" : "Dark"} theme enabled.`);
   });
 }
 
@@ -189,7 +189,7 @@ const VIEW_NAMES = {
 };
 
 function navigate(view) {
-  const target = $(#${view}View);
+  const target = $(`#${view}View`);
   if (!target) return;
 
   $$(".view").forEach(section => {
@@ -282,7 +282,7 @@ function openDatabase(name, version, storeName) {
 
       if (!db.objectStoreNames.contains(storeName)) {
         db.close();
-        reject(new Error(The "${storeName}" store is missing.));
+        reject(new Error(`The "${storeName}" store is missing.`));
         return;
       }
 
@@ -446,7 +446,7 @@ function renderNotes() {
 
   grid.innerHTML = notes.map(note => {
     const tags = (note.tags || []).map(tag =>
-      <span class="tag">${escapeHTML(tag)}</span>
+      `<span class="tag">${escapeHTML(tag)}</span>`
     ).join("");
 
     const favoriteButton = note.favorite
@@ -838,11 +838,11 @@ function updateFocusClock() {
 
   if ($("#focusClock")) {
     $("#focusClock").textContent =
-      ${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")};
+      `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   }
 
   document.title = state.focusRunning
-    ? ${$("#focusClock")?.textContent || "00:00"} · Focus
+    ? `${$("#focusClock")?.textContent || "00:00"} · Focus`
     : "DEVELOPER MASTERMIND";
 }
 
@@ -1080,8 +1080,8 @@ async function renderLibrary() {
     .map(file => {
       const isImage = String(file.type || "").startsWith("image/");
       const preview = isImage
-        ? <div class="library-preview" data-preview-id="${escapeHTML(file.id)}"></div>
-        : <div class="library-preview"><div class="pdf-preview">PDF</div></div>;
+        ? `<div class="library-preview" data-preview-id="${escapeHTML(file.id)}"></div>`
+        : `<div class="library-preview"><div class="pdf-preview">PDF</div></div>`;
 
       return `
         <article class="library-card">
@@ -1104,7 +1104,7 @@ async function renderLibrary() {
     if (!(file.blob instanceof Blob)) continue;
 
     const previewElement = container.querySelector(
-      [data-preview-id="${CSS.escape(file.id)}"]
+      `[data-preview-id="${CSS.escape(file.id)}"]`
     );
 
     if (!previewElement) continue;
@@ -1133,7 +1133,7 @@ async function addLibraryFiles(fileList) {
       file.type === "application/pdf";
 
     if (!validType) {
-      showToast(Skipped unsupported file: ${file.name}, "error");
+      showToast(`Skipped unsupported file: ${file.name}`, "error");
       continue;
     }
 
@@ -1151,7 +1151,7 @@ async function addLibraryFiles(fileList) {
     } catch (error) {
       console.error(error);
       showToast(
-        Could not save ${file.name}. Browser storage may be full.,
+        `Could not save ${file.name}. Browser storage may be full.`,
         "error"
       );
       break;
@@ -1310,7 +1310,7 @@ function renderFlashcards() {
   if (!list) return;
 
   if (count) {
-    count.textContent = ${state.flashcards.length} cards;
+    count.textContent = `${state.flashcards.length} cards`;
   }
 
   if (!state.flashcards.length) {
@@ -1531,7 +1531,7 @@ async function exportAppData() {
 
     saveJSONDownload(
       backup,
-      developer-mastermind-backup-${new Date().toISOString().slice(0, 10)}.json
+      `developer-mastermind-backup-${new Date().toISOString().slice(0, 10)}.json`
     );
 
     showToast("Backup exported.", "success");
@@ -1773,4 +1773,3 @@ window.addEventListener("beforeunload", () => {
   state.notesDB?.close();
   state.filesDB?.close();
 });
-
