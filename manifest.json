@@ -2,11 +2,9 @@
 {
   "name": "Developer Mastermind",
   "short_name": "Mastermind",
-  "description": "Study planner, focus timer, notes and revision tools",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "orientation": "portrait",
   "background_color": "#ffffff",
   "theme_color": "#4f46e5",
   "icons": [
